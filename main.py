@@ -48,7 +48,6 @@ else:
 class VoiceAnalysisResponse(BaseModel):
     transcript: str
     deepfakeScore: float
-    languageDetected: str
 
 
 # ==========================================
@@ -115,31 +114,6 @@ def compute_deepfake_score(audio_bytes: bytes) -> float:
     return 0.1  # default: likely human
 
 
-def detect_language(transcript: str) -> str:
-    """
-    Lightweight language/dialect detection for Nigerian content.
-    Checks for Pidgin English markers; returns BCP-47 tag where possible.
-    TODO: Replace with Spitch language detection or a proper langdetect call.
-    """
-    if not transcript:
-        return "unknown"
-
-    pidgin_markers = [
-        "oga", "abeg", "na", "dey", "don", "make", "wetin",
-        "wahala", "chop", "sef", "sha", "nah", "bros", "comot",
-    ]
-    lower_words = set(re.findall(r"\b\w+\b", transcript.lower()))
-    pidgin_hits = lower_words.intersection(pidgin_markers)
-
-    if len(pidgin_hits) >= 2:
-        return "pidgin"
-
-    # Simple Yoruba / Hausa / Igbo marker checks (extend as needed)
-    yoruba_markers = {"bawo", "ẹ", "jowo", "e", "se", "ko", "ni"}
-    if lower_words.intersection(yoruba_markers):
-        return "yo"
-
-    return "en"
 
 
 # ==========================================
@@ -232,14 +206,10 @@ async def analyze_voice(
     deepfake_score = compute_deepfake_score(audio_bytes)
     print(f"[analyze-voice] Deepfake score: {deepfake_score}")
 
-    # Step 3: Language / dialect detection
-    language = detect_language(transcript)
-    print(f"[analyze-voice] Language detected: {language}")
 
     return VoiceAnalysisResponse(
         transcript=transcript,
         deepfakeScore=deepfake_score,
-        languageDetected=language,
     )
 
 
