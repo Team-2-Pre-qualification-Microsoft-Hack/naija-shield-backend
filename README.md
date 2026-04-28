@@ -27,13 +27,13 @@ NaijaShield is a real-time fraud and scam detection platform designed to protect
 ```
 ┌──────────────────────────────────────────────────────┐
 │                     Frontend (Next.js)               │
-│                   http://localhost:3000               │
+│                   http://localhost:3000              │
 └──────────────────┬───────────────────┬───────────────┘
                    │                   │
             REST / SignalR        REST (audio)
                    │                   │
    ┌───────────────▼──────┐  ┌────────▼──────────────┐
-   │   .NET Core API      │  │  Python Voice Sidecar  │
+   │   .NET Core API      │  │  Python Voice Sidecar │
    │   (Port 5000/5001)   │  │  (Port 8000)           │
    │                      │  │                        │
    │  • Semantic Kernel    │  │  • Azure Speech SDK    │
@@ -264,6 +264,3 @@ This project was developed as part of the **Microsoft Pre-qualification Hackatho
 
 ---
 
-<p align="center">
-  Built with ❤️ for Nigeria 🇳🇬
-</p>

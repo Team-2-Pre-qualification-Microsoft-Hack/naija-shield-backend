@@ -1,6 +1,8 @@
+import azure.cognitiveservices.speech as speechsdk
 from fastapi import FastAPI
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
+import os
 from spitch import Spitch
 import requests
 
@@ -51,32 +53,44 @@ def health_check():
     }
 
 
-spitch_client = Spitch(api_key=spitch_key)
-
 @app.get("/api/generate-warning")
 def generate_warning_audio():
     """
-    Tests the Spitch TTS API using their official Python SDK.
+    PIVOT: Using Azure native Text-to-Speech since Spitch is throwing 503 errors.
+    Generates a localized audio warning using Azure's Nigerian English neural voices.
     """
     try:
-        # Call the API cleanly without needing to know the URL endpoints
-        response = spitch_client.speech.generate(
-            language="yo", # Using Yoruba as a test (or "en" for English)
-            text="Bawo ni? Abeg be careful, this person fit be scammer.",
-            voice="femi" # 'femi' is one of their documented African voices
-        )
+        # 1. Set up the Azure Speech Config using the key from the vault
+        # NOTE: Update "swedencentral" to match whatever region you used when creating the Speech resource!
+        speech_config = speechsdk.SpeechConfig(subscription=azure_speech_key, region="swedencentral")
         
-        # The API will return the speech object
-        print("Spitch Response received successfully!")
+        # 2. Select the native Nigerian English Voice (Ezinne is the female neural voice)
+        speech_config.speech_synthesis_voice_name = "en-NG-EzinneNeural"
         
-        return {
-            "status": "Success!",
-            "message": "Connected to Spitch.app successfully via the official SDK without any DNS errors!",
-        }
+        # 3. Tell it to save the output to a local file
+        file_name = "azure_scam_warning.wav"
+        audio_config = speechsdk.audio.AudioOutputConfig(filename=file_name)
+        
+        # 4. Create the synthesizer and speak the text
+        synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
+        
+        warning_text = "Attention. We suspect the person you are speaking to may be a scammer. Do not share your OTP or bank details."
+        
+        print("Generating audio via Azure...")
+        result = synthesizer.speak_text_async(warning_text).get()
+        
+        # 5. Check if it worked
+        if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+            return {
+                "status": "Success!",
+                "message": f"Pivot successful! Audio generated via Azure. Listen to '{file_name}' in your project folder."
+            }
+        elif result.reason == speechsdk.ResultReason.Canceled:
+            cancellation_details = result.cancellation_details
+            return {"status": "Failed", "error": f"Speech synthesis canceled: {cancellation_details.reason}"}
             
     except Exception as e:
         return {"status": "Error", "details": str(e)}
-    
 # Run the server
 if __name__ == "__main__":
     import uvicorn

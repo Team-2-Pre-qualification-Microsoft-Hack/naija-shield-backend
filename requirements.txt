@@ -4,3 +4,4 @@ azure-identity
 azure-keyvault-secrets  
 requests 
 spitch
+azure-cognitiveservices-speech
