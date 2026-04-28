@@ -16,8 +16,9 @@ NaijaShield is a real-time fraud and scam detection platform designed to protect
 - **AI Scam Analysis** — Uses Azure OpenAI (via Semantic Kernel) to classify incoming calls/messages as `BLOCK` or `ALLOW` in real-time.
 - **Voice Warning Generation** — Produces localized audio warnings in Nigerian English using Azure's `en-NG-EzinneNeural` neural voice.
 - **Speech-to-Text Transcription** — Transcribes live audio streams via Azure Cognitive Services Speech SDK.
+- **Enterprise Authentication System** — Invitation-only user management with role-based access control (SOC Analyst, Compliance Officer, System Admin).
 - **Secure Secrets Management** — All API keys and connection strings are fetched from Azure Key Vault at runtime; no secrets are stored in code.
-- **Cosmos DB Persistence** — Stores call metadata, scam verdicts, and analytics in Azure Cosmos DB.
+- **Cosmos DB Persistence** — Stores call metadata, scam verdicts, analytics, and user data in Azure Cosmos DB.
 - **CORS-Enabled** — Pre-configured for a Next.js frontend on `localhost:3000`.
 
 ---
@@ -68,6 +69,9 @@ NaijaShield is a real-time fraud and scam detection platform designed to protect
 | [Azure.Identity](https://learn.microsoft.com/en-us/dotnet/api/azure.identity) | 1.21.0 | Secure authentication to Azure services |
 | [Azure.Security.KeyVault.Secrets](https://learn.microsoft.com/en-us/dotnet/api/azure.security.keyvault.secrets) | 4.10.0 | Fetches secrets from Azure Key Vault |
 | [Microsoft.Azure.Cosmos](https://learn.microsoft.com/en-us/azure/cosmos-db/) | 3.59.0 | Cosmos DB NoSQL client |
+| [BCrypt.Net-Next](https://github.com/BcryptNet/bcrypt.net) | 4.0.3 | Secure password hashing |
+| [Microsoft.AspNetCore.Authentication.JwtBearer](https://www.nuget.org/packages/Microsoft.AspNetCore.Authentication.JwtBearer/) | 9.0.0 | JWT authentication middleware |
+| [System.IdentityModel.Tokens.Jwt](https://www.nuget.org/packages/System.IdentityModel.Tokens.Jwt/) | 8.3.1 | JWT token generation and validation |
 | [Newtonsoft.Json](https://www.newtonsoft.com/json) | 13.0.4 | JSON serialization |
 
 ### Python Voice Sidecar
@@ -110,6 +114,7 @@ The application expects these secrets to be present in your Key Vault:
 | `Cosmos-Connection-String` | .NET API | Cosmos DB connection string |
 | `Search-Key` | .NET API | Azure AI Search key |
 | `SignalR-Connection-String` | .NET API | Azure SignalR connection string |
+| `JWT-Secret` | .NET API | JWT token signing key (minimum 32 characters) |
 | `Spitch-API-Key` | Python Sidecar | API key for Spitch TTS |
 | `Azure-Speech-Key` | Python Sidecar | Azure Cognitive Services Speech key |
 
@@ -166,7 +171,19 @@ The sidecar will start on `http://localhost:8000`.
 
 ## 📡 API Endpoints
 
-### .NET Core API
+### Authentication Endpoints (.NET Core API)
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `POST` | `/api/auth/login` | User login with email and password | No |
+| `POST` | `/api/auth/invite/accept` | Accept invitation and set password | No |
+| `POST` | `/api/auth/invite` | Create new user invitation (SYSTEM_ADMIN only) | Yes |
+| `POST` | `/api/auth/refresh` | Refresh access token | No |
+| `POST` | `/api/auth/logout` | Invalidate refresh token | Yes |
+
+> **📖 See [API_REFERENCE.md](API_REFERENCE.md) for detailed authentication API documentation**
+
+### Core API Endpoints (.NET Core API)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -185,18 +202,46 @@ The sidecar will start on `http://localhost:8000`.
 
 ```
 naija-shield-backend/
-├── Program.cs                    # .NET Core API entry point (AI analysis, Cosmos DB, CORS)
-├── naija-shield-backend.csproj   # .NET project file and NuGet dependencies
-├── naija-shield-backend.sln      # Visual Studio solution file
-├── appsettings.json              # .NET app configuration
-├── appsettings.Development.json  # .NET development overrides
+├── Controllers/
+│   └── AuthController.cs         # Authentication API endpoints
+├── Services/
+│   ├── AuthService.cs             # Authentication business logic
+│   ├── UserService.cs             # User CRUD operations
+│   ├── TokenService.cs            # JWT token generation
+│   └── EmailService.cs            # Email invitation service
+├── Models/
+│   ├── User.cs                    # User entity model
+│   ├── UserRole.cs                # Role constants
+│   ├── UserStatus.cs              # Status constants
+│   └── DTOs/
+│       └── AuthDTOs.cs            # Request/Response DTOs
+├── Middleware/
+│   └── RoleAuthorizationMiddleware.cs  # Role-based permissions
+├── Utils/
+│   └── PasswordHasher.cs          # BCrypt password hashing
+├── Scripts/
+│   ├── CreateAdminUser.cs         # Admin user creation tool
+│   └── CreateInitialAdmin.md      # Admin setup guide
+├── Documentation/
+│   ├── README_AUTH.md             # Authentication documentation
+│   ├── API_REFERENCE.md           # API endpoint reference
+│   ├── DEPLOYMENT_CHECKLIST.md    # Deployment guide
+│   ├── TESTING_GUIDE.md           # Testing guide
+│   ├── QUICK_START.md             # Quick start guide
+│   ├── IMPLEMENTATION_SUMMARY.md  # Implementation overview
+│   └── FILE_INDEX.md              # File structure index
+├── Program.cs                     # .NET Core API entry point
+├── naija-shield-backend.csproj    # .NET project file
+├── naija-shield-backend.sln       # Visual Studio solution file
+├── appsettings.json               # .NET app configuration
+├── appsettings.Development.json   # .NET development overrides
 ├── Properties/
-│   └── launchSettings.json       # Local development launch profiles
-├── main.py                       # Python FastAPI voice sidecar (STT, TTS, warnings)
-├── requirements.txt              # Python dependencies
-├── azure_scam_warning.wav        # Generated scam warning audio sample
-├── .gitignore                    # Git ignore rules
-└── README.md                     # This file
+│   └── launchSettings.json        # Local development launch profiles
+├── main.py                        # Python FastAPI voice sidecar
+├── requirements.txt               # Python dependencies
+├── azure_scam_warning.wav         # Generated audio sample
+├── .gitignore                     # Git ignore rules
+└── README.md                      # This file
 ```
 
 ---
@@ -220,7 +265,23 @@ Expected response:
 }
 ```
 
-**2. Verify the Python sidecar:**
+**2. Test the authentication system:**
+
+```bash
+# Login (requires initial admin user setup - see QUICK_START.md)
+curl -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@yourdomain.com",
+    "password": "YourPassword123"
+  }'
+```
+
+Expected response includes `token`, `refreshToken`, and `user` object.
+
+> **📖 For complete authentication setup, see [QUICK_START.md](QUICK_START.md)**
+
+**3. Verify the Python sidecar:**
 
 ```bash
 curl http://localhost:8000/api/health-voice
@@ -238,13 +299,43 @@ Expected response:
 }
 ```
 
-**3. Generate a warning audio file:**
+**4. Generate a warning audio file:**
 
 ```bash
 curl http://localhost:8000/api/generate-warning
 ```
 
 This will produce `azure_scam_warning.wav` in the project root.
+
+---
+
+## 📚 Documentation
+
+### Authentication System
+- **[QUICK_START.md](QUICK_START.md)** - Get authentication running in 10 minutes
+- **[README_AUTH.md](README_AUTH.md)** - Complete authentication system documentation
+- **[API_REFERENCE.md](API_REFERENCE.md)** - Detailed API endpoint reference
+- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Pre-deployment verification
+- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Comprehensive testing guide
+- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Implementation overview
+- **[FILE_INDEX.md](FILE_INDEX.md)** - Project file structure reference
+
+### User Roles
+NaijaShield implements a strict invitation-only authentication system with three roles:
+
+| Role | Access Level | Permissions |
+|------|-------------|-------------|
+| **SOC Analyst** | `SOC_ANALYST` | View overview, investigate threats |
+| **Compliance Officer** | `COMPLIANCE_OFFICER` | View overview, generate compliance reports |
+| **System Admin** | `SYSTEM_ADMIN` | Full access, user management, invitations |
+
+### Security Features
+- ✅ BCrypt password hashing (cost factor 12)
+- ✅ JWT authentication (1-hour access tokens)
+- ✅ Refresh token rotation (7-day expiry)
+- ✅ Rate limiting (5 failed attempts = 15-min lockout)
+- ✅ Role-based authorization
+- ✅ Azure Key Vault secret management
 
 ---
 
