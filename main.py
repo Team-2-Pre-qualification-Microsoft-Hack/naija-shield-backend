@@ -1,4 +1,6 @@
 import re
+import os
+import json
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from azure.identity import DefaultAzureCredential
@@ -11,31 +13,33 @@ app = FastAPI()
 # ==========================================
 # 1. SECURE KEY VAULT CONNECTION
 # ==========================================
-KVUri = "https://rg-naijashield-dev-key.vault.azure.net/"
-credential = DefaultAzureCredential()
-client = SecretClient(vault_url=KVUri, credential=credential)
+environment = os.environ.get("ASPNETCORE_ENVIRONMENT", "Development")
 
-print("Connecting to Key Vault...")
-
-# ==========================================
-# 2. FETCH ALL SIDECAR KEYS
-# ==========================================
-try:
-    spitch_key = client.get_secret("Spitch-API-Key").value
-    azure_speech_key = client.get_secret("Azure-Speech-Key").value
-    # Azure Speech region — stored as a non-secret config value in Key Vault for convenience
-    # Default to eastus if not found; update the vault if you deploy to a different region
+if environment != "Production":
+    # Read directly from appsettings.Development.json (same file the .NET app uses)
+    settings_path = os.path.join(os.path.dirname(__file__), "appsettings.Development.json")
+    with open(settings_path) as f:
+        settings = json.load(f)
+    spitch_key = settings.get("Spitch-API-Key", "")
+    azure_speech_key = settings["Azure-Speech-Key"]
+    azure_speech_region = settings.get("Azure-Speech-Region", "eastus")
+    print("Dev mode: keys loaded from appsettings.Development.json")
+else:
+    KVUri = "https://rg-naijashield-dev-key.vault.azure.net/"
+    credential = DefaultAzureCredential()
+    client = SecretClient(vault_url=KVUri, credential=credential)
+    print("Connecting to Key Vault...")
     try:
-        azure_speech_region = client.get_secret("Azure-Speech-Region").value
-    except Exception:
-        azure_speech_region = "eastus"
-    print("Spitch and Azure Speech keys successfully retrieved!")
-except Exception as e:
-    print(f"Error fetching keys: {e}")
-    print("Did you remember to run 'az login' in the terminal first?")
-    spitch_key = None
-    azure_speech_key = None
-    azure_speech_region = "eastus"
+        spitch_key = client.get_secret("Spitch-API-Key").value
+        azure_speech_key = client.get_secret("Azure-Speech-Key").value
+        try:
+            azure_speech_region = client.get_secret("Azure-Speech-Region").value
+        except Exception:
+            azure_speech_region = "eastus"
+        print("Keys successfully retrieved from Key Vault!")
+    except Exception as e:
+        print(f"Error fetching keys: {e}")
+        raise
 
 # ==========================================
 # 3. PYDANTIC MODELS
