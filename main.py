@@ -1,7 +1,6 @@
-import base64
 import re
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 from spitch import Spitch
@@ -41,21 +40,6 @@ except Exception as e:
 # ==========================================
 # 3. PYDANTIC MODELS
 # ==========================================
-
-class VoiceAnalysisRequest(BaseModel):
-    """
-    Payload sent by the .NET backend's POST /api/ingest/voice endpoint
-    to this sidecar's POST /analyze-voice route.
-    """
-    call_id: str = Field(alias="callId")
-    from_number: str = Field(alias="from")
-    to: str
-    audio_base64: str = Field(alias="audioBase64")
-    audio_format: str = Field(default="wav", alias="audioFormat")
-    timestamp: str
-
-    model_config = {"populate_by_name": True}
-
 
 class VoiceAnalysisResponse(BaseModel):
     transcript: str
@@ -207,12 +191,19 @@ def generate_warning_audio():
 # 6. NEW: VOICE ANALYSIS ENDPOINT
 # ==========================================
 
-@app.post("/analyze-voice", response_model=VoiceAnalysisResponse)
-async def analyze_voice(request: VoiceAnalysisRequest):
+@app.post("/ingest/voice", response_model=VoiceAnalysisResponse)
+async def analyze_voice(
+    audioFile: UploadFile = File(...),
+    audioFormat: str = Form(default="wav"),
+):
     """
-    Receives a base64-encoded audio segment from the .NET backend,
+    Receives an audio file via multipart/form-data from the .NET backend,
     transcribes it using Azure Speech Service, computes a deepfake
     probability score, and detects the spoken language/dialect.
+
+    Form fields:
+        audioFile   — the raw audio file upload
+        audioFormat — file format hint: "wav", "mp3", or "ogg" (default "wav")
 
     Returns:
         transcript      — speech-to-text output (may be empty if STT fails)
@@ -222,25 +213,15 @@ async def analyze_voice(request: VoiceAnalysisRequest):
     The .NET pipeline combines deepfakeScore with the LLM risk score:
         finalRiskScore = (llmScore * 0.6) + (deepfakeScore * 100 * 0.4)
     """
-    # Decode base64 audio
-    try:
-        audio_bytes = base64.b64decode(request.audio_base64)
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid base64 audio payload: {e}"
-        )
+    audio_bytes = await audioFile.read()
 
     if len(audio_bytes) == 0:
-        raise HTTPException(status_code=400, detail="Audio payload is empty after base64 decode")
+        raise HTTPException(status_code=400, detail="Audio file is empty")
 
-    print(
-        f"[analyze-voice] callId={request.call_id} format={request.audio_format} "
-        f"bytes={len(audio_bytes)}"
-    )
+    print(f"[analyze-voice] filename={audioFile.filename} format={audioFormat} bytes={len(audio_bytes)}")
 
     # Step 1: Transcribe via Azure Speech REST API
-    transcript = transcribe_audio(audio_bytes, request.audio_format)
+    transcript = transcribe_audio(audio_bytes, audioFormat)
     print(f"[analyze-voice] Transcript ({len(transcript)} chars): {transcript[:100]}")
 
     # Step 2: Deepfake probability scoring (placeholder — see function docstring)

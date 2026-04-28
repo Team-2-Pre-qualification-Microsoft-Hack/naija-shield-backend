@@ -156,8 +156,9 @@ public sealed class IngestController : ControllerBase
     /// Returns HTTP 503 if the AI sidecar is unreachable.
     /// </summary>
     [HttpPost("voice")]
+    [Consumes("multipart/form-data")]
     public async Task<IActionResult> IngestVoice(
-        [FromBody] VoiceIngestRequest payload,
+        [FromForm] VoiceIngestRequest payload,
         CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
@@ -310,21 +311,15 @@ public sealed class IngestController : ControllerBase
     {
         var client = _httpFactory.CreateClient("AiSidecar");
 
-        var body = new
-        {
-            callId = payload.CallId,
-            from = payload.From,
-            to = payload.To,
-            audioBase64 = payload.AudioBase64,
-            audioFormat = payload.AudioFormat,
-            timestamp = payload.Timestamp
-        };
+        using var content = new MultipartFormDataContent();
 
-        var json = JsonSerializer.Serialize(body, CamelCaseOptions);
-        using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        var fileStream = payload.AudioFile.OpenReadStream();
+        var fileContent = new StreamContent(fileStream);
+        content.Add(fileContent, "audioFile", payload.AudioFile.FileName);
+        content.Add(new StringContent(payload.AudioFormat), "audioFormat");
 
-        _logger.LogInformation("[Voice] Calling AI sidecar POST /analyze-voice");
-        var response = await client.PostAsync("/analyze-voice", content, cancellationToken);
+        _logger.LogInformation("[Voice] Calling AI sidecar POST /ingest/voice");
+        var response = await client.PostAsync("/ingest/voice", content, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);

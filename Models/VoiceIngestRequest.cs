@@ -1,11 +1,10 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace naija_shield_backend.Models;
 
 /// <summary>
-/// JSON body expected by POST /api/ingest/voice.
-/// Audio arrives as base64-encoded bytes so callers do not need
-/// multipart form-data — a single JSON POST is sufficient.
+/// Multipart/form-data body expected by POST /api/ingest/voice.
 /// </summary>
 public class VoiceIngestRequest
 {
@@ -21,12 +20,11 @@ public class VoiceIngestRequest
     [Required]
     public string To { get; set; } = default!;
 
-    /// <summary>Base64-encoded audio bytes of the recorded call segment.</summary>
+    /// <summary>Raw audio file uploaded by the caller.</summary>
     [Required]
-    public string AudioBase64 { get; set; } = default!;
+    public IFormFile AudioFile { get; set; } = default!;
 
     /// <summary>Container format of the audio: wav, mp3, or ogg.</summary>
-    [Required]
     public string AudioFormat { get; set; } = "wav";
 
     /// <summary>ISO 8601 timestamp when the call was recorded.</summary>
