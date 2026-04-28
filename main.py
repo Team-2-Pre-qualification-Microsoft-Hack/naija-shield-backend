@@ -1,8 +1,10 @@
-import azure.cognitiveservices.speech as speechsdk
-from fastapi import FastAPI
+import re
+import os
+import json
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
-import os
 from spitch import Spitch
 import requests
 
@@ -11,87 +13,97 @@ app = FastAPI()
 # ==========================================
 # 1. SECURE KEY VAULT CONNECTION
 # ==========================================
-# IMPORTANT: Update this URL to match your exact Key Vault name!
-KVUri = "https://rg-naijashield-dev-key.vault.azure.net/"
-credential = DefaultAzureCredential()
-client = SecretClient(vault_url=KVUri, credential=credential)
+environment = os.environ.get("ASPNETCORE_ENVIRONMENT", "Development")
 
-print("Connecting to Key Vault...")
-
-# ==========================================
-# 2. FETCH THE VOICE INFRASTRUCTURE KEYS
-# ==========================================
-try:
-    spitch_key = client.get_secret("Spitch-API-Key").value
-    azure_speech_key = client.get_secret("Azure-Speech-Key").value
-    print("Spitch and Azure Speech keys successfully retrieved!")
-except Exception as e:
-    print(f"Error fetching keys: {e}")
-    print("Did you remember to run 'az login' in the terminal first?")
-
-# ==========================================
-# 3. PLUG & PLAY TEST ENDPOINT
-# ==========================================
-@app.get("/api/health-voice")
-def health_check():
-    """
-    Proves the Sidecar has its keys and is ready to process audio.
-    """
-    # A fake payload to prove we can build the Spitch request format
-    spitch_headers = {
-        "Authorization": f"Bearer {spitch_key}",
-        "Content-Type": "application/json"
-    }
-    
-    return {
-        "status": "Online", 
-        "message": "Python Sidecar is ready for Jambonz/WebRTC WebSocket streams.",
-        "keys_loaded": {
-            "spitch": "Loaded (Ready for Text-To-Speech)",
-            "azure_speech": "Loaded (Ready for Speech-To-Text)"
-        }
-    }
-
-
-@app.get("/api/generate-warning")
-def generate_warning_audio():
-    """
-    PIVOT: Using Azure native Text-to-Speech since Spitch is throwing 503 errors.
-    Generates a localized audio warning using Azure's Nigerian English neural voices.
-    """
+if environment != "Production":
+    # Read directly from appsettings.Development.json (same file the .NET app uses)
+    settings_path = os.path.join(os.path.dirname(__file__), "appsettings.Development.json")
+    with open(settings_path) as f:
+        settings = json.load(f)
+    spitch_key = settings.get("Spitch-API-Key", "")
+    azure_speech_key = settings["Azure-Speech-Key"]
+    azure_speech_region = settings.get("Azure-Speech-Region", "eastus")
+    print("Dev mode: keys loaded from appsettings.Development.json")
+else:
+    KVUri = "https://rg-naijashield-dev-key.vault.azure.net/"
+    credential = DefaultAzureCredential()
+    client = SecretClient(vault_url=KVUri, credential=credential)
+    print("Connecting to Key Vault...")
     try:
-        # 1. Set up the Azure Speech Config using the key from the vault
-        # NOTE: Update "swedencentral" to match whatever region you used when creating the Speech resource!
-        speech_config = speechsdk.SpeechConfig(subscription=azure_speech_key, region="swedencentral")
-        
-        # 2. Select the native Nigerian English Voice (Ezinne is the female neural voice)
-        speech_config.speech_synthesis_voice_name = "en-NG-EzinneNeural"
-        
-        # 3. Tell it to save the output to a local file
-        file_name = "azure_scam_warning.wav"
-        audio_config = speechsdk.audio.AudioOutputConfig(filename=file_name)
-        
-        # 4. Create the synthesizer and speak the text
-        synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
-        
-        warning_text = "Attention. We suspect the person you are speaking to may be a scammer. Do not share your OTP or bank details."
-        
-        print("Generating audio via Azure...")
-        result = synthesizer.speak_text_async(warning_text).get()
-        
-        # 5. Check if it worked
-        if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-            return {
-                "status": "Success!",
-                "message": f"Pivot successful! Audio generated via Azure. Listen to '{file_name}' in your project folder."
-            }
-        elif result.reason == speechsdk.ResultReason.Canceled:
-            cancellation_details = result.cancellation_details
-            return {"status": "Failed", "error": f"Speech synthesis canceled: {cancellation_details.reason}"}
-            
+        spitch_key = client.get_secret("Spitch-API-Key").value
+        azure_speech_key = client.get_secret("Azure-Speech-Key").value
+        try:
+            azure_speech_region = client.get_secret("Azure-Speech-Region").value
+        except Exception:
+            azure_speech_region = "eastus"
+        print("Keys successfully retrieved from Key Vault!")
     except Exception as e:
-        return {"status": "Error", "details": str(e)}
-# Run the server
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        print(f"Error fetching keys: {e}")
+        raise
+
+# ==========================================
+# 3. PYDANTIC MODELS
+# ==========================================
+
+class VoiceAnalysisResponse(BaseModel):
+    transcript: str
+    deepfakeScore: float
+    languageDetected: str
+
+
+# ==========================================
+# 4. HELPER FUNCTIONS
+# ==========================================
+
+def transcribe_audio(audio_bytes: bytes, audio_format: str) -> str:
+    """
+    Transcribes audio bytes using the Azure Speech Service REST API.
+    Supports Nigerian English (en-NG) and falls back to en-US.
+    Returns an empty string if transcription fails rather than raising.
+    """
+    if not azure_speech_key:
+        print("[transcribe] No Azure Speech key available — returning empty transcript")
+        return ""
+
+    url = (
+        f"https://{azure_speech_region}.stt.speech.microsoft.com"
+        "/speech/recognition/conversation/cognitiveservices/v1"
+    )
+    params = {
+        "language": "en-NG",
+        "format": "detailed",
+    }
+    # Azure Speech REST API requires the raw audio bytes as the request body.
+    # Supported formats: wav (PCM), ogg (opus), mp3 with the correct Content-Type.
+    content_type_map = {
+        "wav": "audio/wav",
+        "mp3": "audio/mpeg",
+        "ogg": "audio/ogg; codecs=opus",
+    }
+    content_type = content_type_map.get(audio_format.lower(), "audio/wav")
+
+    headers = {
+        "Ocp-Apim-Subscription-Key": azure_speech_key,
+        "Content-Type": content_type,
+        "Accept": "application/json",
+    }
+
+    try:
+        resp = requests.post(url, params=params, headers=headers, data=audio_bytes, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        # Azure Speech REST returns 'DisplayText' at the top level for simple recognition
+        return data.get("DisplayText", "")
+    except requests.RequestException as e:
+        print(f"[transcribe] Azure Speech API error: {e}")
+        return ""
+
+
+def compute_deepfake_score(audio_bytes: bytes) -> float:
+    """
+    Placeholder deepfake detection.
+    TODO: Integrate a real model (e.g. RawNet2 or WavLM-based classifier).
+    Currently analyses basic audio energy variance as a naive heuristic —
+    this is NOT a real deepfake detector and should be replaced before production.
+    Returns a score in [0.0, 1.0] where 1.0 = likely synthetic.
+    """
