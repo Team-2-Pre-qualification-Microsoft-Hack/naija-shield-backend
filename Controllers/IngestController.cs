@@ -134,7 +134,14 @@ public sealed class IngestController : ControllerBase
                     cancellationToken);
             }
 
-            return Ok(new { received = true, processed = true, incidentId = incident.Id });
+            return Ok(new
+            {
+                received = true,
+                processed = true,
+                incidentId = incident.Id,
+                riskScore = incident.RiskScore,
+                status = incident.Status
+            });
         }
         catch (Exception ex)
         {
@@ -149,11 +156,11 @@ public sealed class IngestController : ControllerBase
     // ─────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Receives a recorded voice segment as a base64-encoded JSON payload,
+    /// Receives a recorded voice segment as multipart form-data,
     /// transcribes it via the Python AI sidecar, runs the same LLM fraud-
     /// scoring pipeline as SMS, and combines the LLM score with the deepfake
     /// score using the formula: finalScore = (llmScore × 0.6) + (deepfake × 100 × 0.4).
-    /// Returns HTTP 503 if the AI sidecar is unreachable.
+    /// Always returns HTTP 200 so callers do not retry on transient failures.
     /// </summary>
     [HttpPost("voice")]
     [Consumes("multipart/form-data")]
@@ -162,7 +169,20 @@ public sealed class IngestController : ControllerBase
         CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+        {
+            return Ok(new { received = true, processed = false, reason = "Invalid request payload" });
+        }
+
+        if (string.IsNullOrWhiteSpace(payload.CallId) ||
+            string.IsNullOrWhiteSpace(payload.From) ||
+            string.IsNullOrWhiteSpace(payload.To) ||
+            string.IsNullOrWhiteSpace(payload.Timestamp) ||
+            payload.AudioFile is null ||
+            payload.AudioFile.Length == 0)
+        {
+            _logger.LogWarning("[Voice] Rejected payload — missing required fields or empty audio file");
+            return Ok(new { received = true, processed = false, reason = "Missing required fields or empty audio file" });
+        }
 
         _logger.LogInformation(
             "[Voice] Received callId={CallId} from={From} format={Fmt}",
@@ -177,9 +197,11 @@ public sealed class IngestController : ControllerBase
         catch (HttpRequestException ex)
         {
             _logger.LogError(ex, "[Voice] AI sidecar unreachable for callId={CallId}", payload.CallId);
-            return StatusCode(503, new
+            return Ok(new
             {
-                error = "AI sidecar unavailable",
+                received = true,
+                processed = false,
+                reason = "AI sidecar unavailable",
                 detail = "The voice transcription service is currently unreachable. Try again later.",
                 callId = payload.CallId
             });
@@ -187,9 +209,11 @@ public sealed class IngestController : ControllerBase
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogError(ex, "[Voice] AI sidecar timed out for callId={CallId}", payload.CallId);
-            return StatusCode(503, new
+            return Ok(new
             {
-                error = "AI sidecar timeout",
+                received = true,
+                processed = false,
+                reason = "AI sidecar timeout",
                 detail = "Voice transcription timed out. The audio may be too long.",
                 callId = payload.CallId
             });
@@ -252,7 +276,14 @@ public sealed class IngestController : ControllerBase
                     cancellationToken);
             }
 
-            return Ok(new { received = true, processed = true, incidentId = incident.Id });
+            return Ok(new
+            {
+                received = true,
+                processed = true,
+                incidentId = incident.Id,
+                riskScore = incident.RiskScore,
+                status = incident.Status
+            });
         }
         catch (Exception ex)
         {
