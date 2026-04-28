@@ -140,7 +140,7 @@ public sealed class IngestController : ControllerBase
         {
             // Return 200 regardless so AT does not retry; the error is logged for investigation.
             _logger.LogError(ex, "[SMS] Pipeline failed for message from={From}", payload.From);
-            return Ok(new { received = true, processed = false, reason = "Internal pipeline error" });
+            return Ok(new { received = true, processed = false, reason = "Internal pipeline error", detail = ex.Message });
         }
     }
 
@@ -256,7 +256,7 @@ public sealed class IngestController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Voice] Pipeline failed for callId={CallId}", payload.CallId);
-            return Ok(new { received = true, processed = false, reason = "Internal pipeline error" });
+            return Ok(new { received = true, processed = false, reason = "Internal pipeline error", detail = ex.Message });
         }
     }
 

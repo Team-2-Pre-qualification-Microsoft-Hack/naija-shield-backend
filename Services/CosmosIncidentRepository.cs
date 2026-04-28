@@ -79,7 +79,7 @@ public sealed class CosmosIncidentRepository : IIncidentRepository
 
             var containerProps = new ContainerProperties(containerName, partitionKeyPath: "/channel");
             var containerResponse = await dbResponse.Database.CreateContainerIfNotExistsAsync(
-                containerProps, throughput: 400, cancellationToken: cancellationToken);
+                containerProps, cancellationToken: cancellationToken);
 
             _container = containerResponse.Container;
             return _container;
