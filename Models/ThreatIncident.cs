@@ -1,0 +1,57 @@
+using Newtonsoft.Json;
+
+namespace naija_shield_backend.Models;
+
+/// <summary>
+/// Cosmos DB document that persists every analysed telecom event.
+/// The partition key path is /channel, so SMS and Voice incidents
+/// are stored in separate logical partitions for efficient querying.
+/// Newtonsoft.Json attributes are used because the Cosmos DB SDK v3
+/// defaults to Newtonsoft for serialisation.
+/// </summary>
+public class ThreatIncident
+{
+    /// <summary>Unique incident identifier in the format INC-XXXXXXXX.</summary>
+    [JsonProperty("id")]
+    public string Id { get; set; } = default!;
+
+    /// <summary>ISO 8601 UTC timestamp of when the event was ingested.</summary>
+    [JsonProperty("timestamp")]
+    public string Timestamp { get; set; } = default!;
+
+    /// <summary>Telecom channel: SMS | Voice | WhatsApp.</summary>
+    [JsonProperty("channel")]
+    public string Channel { get; set; } = default!;
+
+    /// <summary>Sender MSISDN after PII redaction applied by Presidio.</summary>
+    [JsonProperty("from")]
+    public string From { get; set; } = default!;
+
+    /// <summary>First 80 characters of the redacted message text or transcript.</summary>
+    [JsonProperty("preview")]
+    public string Preview { get; set; } = default!;
+
+    /// <summary>Composite risk score 0–100 (for Voice this blends LLM + deepfake scores).</summary>
+    [JsonProperty("riskScore")]
+    public int RiskScore { get; set; }
+
+    /// <summary>LLM classification label: OTP_PHISH | VISHING | IMPERSONATION | SOCIAL_ENGINEERING | SAFE.</summary>
+    [JsonProperty("classification")]
+    public string Classification { get; set; } = default!;
+
+    /// <summary>LLM explanation for the risk score.</summary>
+    [JsonProperty("explanation")]
+    public string Explanation { get; set; } = default!;
+
+    /// <summary>Action taken: Blocked | Monitoring | Allowed.</summary>
+    [JsonProperty("status")]
+    public string Status { get; set; } = default!;
+
+    /// <summary>Full redacted payload text. Raw PII is never stored.</summary>
+    [JsonProperty("rawPayload")]
+    public string RawPayload { get; set; } = default!;
+
+    /// <summary>Voice-only: deepfake probability score 0.0–1.0 returned by the AI sidecar.</summary>
+    [JsonProperty("deepfakeScore", NullValueHandling = NullValueHandling.Ignore)]
+    public double? DeepfakeScore { get; set; }
+}

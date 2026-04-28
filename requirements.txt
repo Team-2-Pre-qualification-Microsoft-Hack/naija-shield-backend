@@ -1,6 +1,7 @@
-fastapi  
-uvicorn  
-azure-identity  
-azure-keyvault-secrets  
-requests 
+fastapi
+uvicorn
+pydantic
+azure-identity
+azure-keyvault-secrets
+requests
 spitch
