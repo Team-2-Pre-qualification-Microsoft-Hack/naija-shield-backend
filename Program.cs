@@ -179,13 +179,13 @@ builder.Services.AddSwaggerGen(c =>
 // ==========================================
 // Dev uses AllowedOrigins array (localhost:3000 + localhost:5173).
 // Prod falls back to Cors:FrontendOrigin (set the deployed URL there).
-var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
-    ?? [builder.Configuration["Cors:FrontendOrigin"] ?? "http://localhost:3000"];
-
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
-        policy.WithOrigins(allowedOrigins)
+        policy.WithOrigins(
+                "https://naija-shield.vercel.app",
+                "http://localhost:3000",
+                "http://localhost:5173")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());
