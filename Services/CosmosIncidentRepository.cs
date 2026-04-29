@@ -107,6 +107,31 @@ public sealed class CosmosIncidentRepository : IIncidentRepository
         return results.AsReadOnly();
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ThreatIncident>> GetByPhoneAsync(
+        string phone,
+        int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var container = await GetContainerAsync(cancellationToken);
+
+        // "from" is a reserved keyword in Cosmos SQL — bracket notation is required.
+        var queryDef = new QueryDefinition(
+            $"SELECT TOP {limit} * FROM c WHERE c[\"from\"] = @phone ORDER BY c._ts DESC")
+            .WithParameter("@phone", phone);
+
+        var results  = new List<ThreatIncident>();
+        var iterator = container.GetItemQueryIterator<ThreatIncident>(queryDef);
+
+        while (iterator.HasMoreResults)
+        {
+            var page = await iterator.ReadNextAsync(cancellationToken);
+            results.AddRange(page);
+        }
+
+        return results.AsReadOnly();
+    }
+
     // Ensures the database and container exist, caching the Container reference.
     private async Task<Container> GetContainerAsync(CancellationToken cancellationToken)
     {

@@ -238,6 +238,7 @@ app.MapControllers();
 app.MapHub<ThreatHub>("/hubs/threat");
 app.MapAuthEndpoints();
 app.MapJambonzEndpoints();
+app.MapAtVoiceEndpoints();
 
 // Smoke-test endpoint (retained from initial setup)
 app.MapGet("/api/test-scam", async (Kernel kernel) =>

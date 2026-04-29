@@ -39,4 +39,13 @@ public interface IIncidentRepository
         DateTimeOffset from,
         DateTimeOffset to,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all incidents where the <c>from</c> field matches <paramref name="phone"/>,
+    /// ordered newest first. Used by the Reputation API to build a number's history.
+    /// </summary>
+    Task<IReadOnlyList<ThreatIncident>> GetByPhoneAsync(
+        string phone,
+        int limit = 50,
+        CancellationToken cancellationToken = default);
 }
