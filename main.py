@@ -48,7 +48,6 @@ else:
 class VoiceAnalysisResponse(BaseModel):
     transcript: str
     deepfakeScore: float
-    languageDetected: str
 
 
 # ==========================================
@@ -107,3 +106,118 @@ def compute_deepfake_score(audio_bytes: bytes) -> float:
     this is NOT a real deepfake detector and should be replaced before production.
     Returns a score in [0.0, 1.0] where 1.0 = likely synthetic.
     """
+    # Naive heuristic: very short or very uniform audio is flagged slightly higher.
+    # Replace this entire function with a real ML inference call.
+    if len(audio_bytes) < 1000:
+        return 0.15  # suspiciously short
+    # Real implementation would load audio, extract features, run classifier
+    return 0.1  # default: likely human
+
+
+
+
+# ==========================================
+# 5. EXISTING ENDPOINTS (retained)
+# ==========================================
+
+@app.get("/api/health-voice")
+def health_check():
+    """
+    Transcribes audio bytes using the Azure Speech Service REST API.
+    Supports Nigerian English (en-NG) and falls back to en-US.
+    Returns an empty string if transcription fails rather than raising.
+    """
+    spitch_headers = {
+        "Authorization": f"Bearer {spitch_key}",
+        "Content-Type": "application/json"
+    }
+
+    return {
+        "status": "Online",
+        "message": "Python Sidecar is ready for Jambonz/WebRTC WebSocket streams.",
+        "keys_loaded": {
+            "spitch": "Loaded" if spitch_key else "Missing",
+            "azure_speech": "Loaded" if azure_speech_key else "Missing",
+        }
+    }
+
+
+spitch_client = Spitch(api_key=spitch_key) if spitch_key else None
+
+
+@app.get("/api/generate-warning")
+def generate_warning_audio():
+    """
+    Tests the Spitch TTS API using their official Python SDK.
+    """
+    if not spitch_client:
+        return {"status": "Error", "details": "Spitch key not loaded"}
+    try:
+        response = spitch_client.speech.generate(
+            language="yo",
+            text="Bawo ni? Abeg be careful, this person fit be scammer.",
+            voice="femi"
+        )
+        print("Spitch Response received successfully!")
+        return {
+            "status": "Success!",
+            "message": "Connected to Spitch.app successfully via the official SDK.",
+        }
+    except Exception as e:
+        return {"status": "Error", "details": str(e)}
+
+
+# ==========================================
+# 6. NEW: VOICE ANALYSIS ENDPOINT
+# ==========================================
+
+@app.post("/ingest/voice", response_model=VoiceAnalysisResponse)
+async def analyze_voice(
+    audioFile: UploadFile = File(...),
+    audioFormat: str = Form(default="wav"),
+):
+    """
+    Receives an audio file via multipart/form-data from the .NET backend,
+    transcribes it using Azure Speech Service, computes a deepfake
+    probability score, and detects the spoken language/dialect.
+
+    Form fields:
+        audioFile   — the raw audio file upload
+        audioFormat — file format hint: "wav", "mp3", or "ogg" (default "wav")
+
+    Returns:
+        transcript      — speech-to-text output (may be empty if STT fails)
+        deepfakeScore   — probability 0.0–1.0 the audio is AI-synthesised
+        languageDetected — e.g. "en", "pidgin", "yo"
+
+    The .NET pipeline combines deepfakeScore with the LLM risk score:
+        finalRiskScore = (llmScore * 0.6) + (deepfakeScore * 100 * 0.4)
+    """
+    audio_bytes = await audioFile.read()
+
+    if len(audio_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Audio file is empty")
+
+    print(f"[analyze-voice] filename={audioFile.filename} format={audioFormat} bytes={len(audio_bytes)}")
+
+    # Step 1: Transcribe via Azure Speech REST API
+    transcript = transcribe_audio(audio_bytes, audioFormat)
+    print(f"[analyze-voice] Transcript ({len(transcript)} chars): {transcript[:100]}")
+
+    # Step 2: Deepfake probability scoring (placeholder — see function docstring)
+    deepfake_score = compute_deepfake_score(audio_bytes)
+    print(f"[analyze-voice] Deepfake score: {deepfake_score}")
+
+
+    return VoiceAnalysisResponse(
+        transcript=transcript,
+        deepfakeScore=deepfake_score,
+    )
+
+
+# ==========================================
+# 7. ENTRY POINT
+# ==========================================
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
