@@ -8,18 +8,20 @@ public class AfricasTalkingService
     private readonly string _baseUrl;
     private readonly ILogger<AfricasTalkingService> _logger;
 
+        private readonly string? _senderId;
+
     public AfricasTalkingService(HttpClient http, IConfiguration config, ILogger<AfricasTalkingService> logger)
     {
         _http = http;
         _logger = logger;
         _username = config["AT-Username"] ?? string.Empty;
         _apiKey = config["AT-API-Key"] ?? string.Empty;
+        _senderId = config["AT-SenderId"]; // optional — e.g. "NaijaShield"
 
-        // Use sandbox in dev, production in prod
-        var env = config["ASPNETCORE_ENVIRONMENT"] ?? "Development";
-        _baseUrl = env == "Production"
-            ? "https://api.africastalking.com/version1/messaging"
-            : "https://api.sandbox.africastalking.com/version1/messaging";
+        // Sandbox when username is literally "sandbox", production otherwise
+        _baseUrl = _username == "sandbox"
+            ? "https://api.sandbox.africastalking.com/version1/messaging"
+            : "https://api.africastalking.com/version1/messaging";
     }
 
     public async Task<bool> SendSmsAsync(string to, string message)
@@ -36,6 +38,10 @@ public class AfricasTalkingService
             ["to"] = to,
             ["message"] = message,
         };
+
+        // Registered sender ID (alphanumeric) — omit to let AT pick the shortcode
+        if (!string.IsNullOrEmpty(_senderId))
+            formData["from"] = _senderId;
 
         var request = new HttpRequestMessage(HttpMethod.Post, _baseUrl)
         {
