@@ -48,19 +48,31 @@ public static class JambonzEndpoints
         });
     }
 
+    // Voice warning texts keyed by language code — spoken via Jambonz TTS (say verb).
+    // Spitch TTS (for richer African-language audio) is a planned upgrade.
+    private static readonly Dictionary<string, string> VoiceWarningTexts = new()
+    {
+        ["en"]     = "NaijaShield warning. This caller is attempting to steal your personal information. Do not share your OTP, PIN, or bank details. This call is now being terminated.",
+        ["pidgin"] = "NaijaShield dey talk. This person wey dey call you wan steal your information. Abeg no give dem your OTP, PIN, or bank details. We don cut this call.",
+        ["yo"]     = "NaijaShield ikilo. Eni to n pe yin fe je yin je. Ma fun ni OTP, PIN, tabi awon alaye ile-ifowopamo re. A n pa ipe yii duro.",
+        ["ha"]     = "NaijaShield gargadi. Wannan mai kira yana kokarin sata bayanankan ka. Kada ka ba shi OTP, PIN, ko bayanan banki. Muna yanke wannan kiran yanzu.",
+        ["ig"]     = "NaijaShield ochọcha. Onye a na-akpo gi na-acho izu gi. Emekwala ka ha nweta OTP, PIN, ma obu ozi banki gi. Anyị na-akwusị oku a ugbu a."
+    };
+
     // ── Task 4: Warning webhook ───────────────────────────────────────────────
     // Jambonz hits this after Task 3 redirects the live call here.
-    // We tell it to play the alert and hang up.
-    private static IResult WarningWebhook() =>
-        Results.Ok(new object[]
+    // lang query param carries the detected language from the audio scanner.
+    private static IResult WarningWebhook(string? lang = "en")
+    {
+        var language = lang ?? "en";
+        var warningText = VoiceWarningTexts.GetValueOrDefault(language, VoiceWarningTexts["en"]);
+
+        return Results.Ok(new object[]
         {
-            new
-            {
-                verb = "say",
-                text = "Naija Shield Alert: This caller is requesting sensitive information. Terminating connection."
-            },
+            new { verb = "say", text = warningText },
             new { verb = "hangup" }
         });
+    }
 
     // ── Call status webhook ───────────────────────────────────────────────────
     // Jambonz posts call lifecycle events here (ringing, answered, completed,
@@ -148,12 +160,14 @@ public static class JambonzEndpoints
                 // ── Task 2 → Task 3: scan for scam keywords ───────────────────
                 if (!ContainsScamKeyword(transcript) || callSid is null) continue;
 
+                var detectedLang = DetectLanguage(transcript);
+
                 logger.LogWarning(
-                    "[Jambonz WS] Scam keyword detected callSid={CallSid} excerpt='{T}'",
-                    callSid, transcript[..Math.Min(80, transcript.Length)]);
+                    "[Jambonz WS] Scam keyword detected callSid={CallSid} lang={Lang} excerpt='{T}'",
+                    callSid, detectedLang, transcript[..Math.Min(80, transcript.Length)]);
 
                 warningFired = true;
-                await jambonz.TriggerWarningAsync(callSid, context.RequestAborted);
+                await jambonz.TriggerWarningAsync(callSid, detectedLang, context.RequestAborted);
             }
         }
         catch (OperationCanceledException) { /* client disconnected cleanly */ }
@@ -205,5 +219,32 @@ public static class JambonzEndpoints
         if (string.IsNullOrWhiteSpace(transcript)) return false;
         var lower = transcript.ToLowerInvariant();
         return ScamKeywords.Any(lower.Contains);
+    }
+
+    // Distinctive marker words for each Nigerian language.
+    // Order matters: pidgin is checked first because its markers are unambiguous.
+    private static readonly (string Lang, string[] Markers)[] LanguageMarkers =
+    [
+        ("pidgin", ["abeg", "oga ", "wahala", "wetin", "how far", "na wa", "dem go", "no be", "e don"]),
+        ("yo",     ["bawo ni", "e joor", "àwọn", "mo fẹ", "ẹ dupe", "ẹ jọ", "jẹ kin", "ẹyin"]),
+        ("ha",     ["ina kwana", "sannu", "wallahi", "gaskiya", "kai tsaye", "ina son", "yaya kake"]),
+        ("ig",     ["biko ", "kedu", "nna m", "nne m", "chukwu", "anyị", "ọ bụ"]),
+    ];
+
+    /// <summary>
+    /// Detects the dominant language of a transcript using distinctive marker words.
+    /// Returns one of: en | pidgin | yo | ha | ig.
+    /// Falls back to "en" when no markers are found (runs correctly even on empty input).
+    /// </summary>
+    private static string DetectLanguage(string transcript)
+    {
+        if (string.IsNullOrWhiteSpace(transcript)) return "en";
+        var lower = transcript.ToLowerInvariant();
+
+        foreach (var (lang, markers) in LanguageMarkers)
+            if (markers.Any(lower.Contains))
+                return lang;
+
+        return "en";
     }
 }

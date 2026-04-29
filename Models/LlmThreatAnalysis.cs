@@ -25,4 +25,11 @@ public class LlmThreatAnalysis
 
     /// <summary>One of: BLOCK | MONITOR | ALLOW — the LLM's recommended action.</summary>
     public string RecommendedAction { get; set; } = "ALLOW";
+
+    /// <summary>
+    /// Dominant language detected in the message.
+    /// Values: en (English) | pidgin (Nigerian Pidgin) | yo (Yoruba) | ha (Hausa) | ig (Igbo).
+    /// Defaults to "en" if the LLM cannot determine the language.
+    /// </summary>
+    public string DetectedLanguage { get; set; } = "en";
 }

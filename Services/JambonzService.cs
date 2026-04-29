@@ -26,7 +26,12 @@ public sealed class JambonzService
     }
 
     // ── Task 3: PUT /v1/Accounts/{accountId}/Calls/{callSid} ──────────────────
-    public async Task TriggerWarningAsync(string callSid, CancellationToken cancellationToken = default)
+    // language: detected language code (en|pidgin|yo|ha|ig) forwarded to the
+    // warning webhook so it can respond in the correct language.
+    public async Task TriggerWarningAsync(
+        string callSid,
+        string language = "en",
+        CancellationToken cancellationToken = default)
     {
         var accountId = _config["Jambonz:AccountId"];
         var serverUrl = _config["Jambonz:ServerUrl"];
@@ -39,12 +44,13 @@ public sealed class JambonzService
 
         var payload = JsonSerializer.Serialize(new
         {
-            call_hook = new { url = $"{serverUrl}/api/jambonz/warning" }
+            call_hook = new { url = $"{serverUrl}/api/jambonz/warning?lang={language}" }
         });
 
         using var content = new StringContent(payload, Encoding.UTF8, "application/json");
 
-        _logger.LogInformation("[Jambonz] Injecting warning via LCC for callSid={CallSid}", callSid);
+        _logger.LogInformation(
+            "[Jambonz] Injecting warning via LCC for callSid={CallSid} lang={Lang}", callSid, language);
 
         try
         {

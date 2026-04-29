@@ -19,10 +19,15 @@ public class SmsService
     private static readonly Regex AccountNumber = new(@"\b\d{10}\b", RegexOptions.Compiled);
     private static readonly Regex OtpCode = new(@"\b\d{4,8}\b", RegexOptions.Compiled);
 
-    private const string WarningMessage =
-        "NaijaShield Alert: The message you just received may be a scam attempt. " +
-        "Do NOT share your OTP, PIN, password, or bank details with anyone. " +
-        "If you are unsure, call your bank directly on their official number.";
+    // Warning texts keyed by detected language code (en | pidgin | yo | ha | ig).
+    private static readonly Dictionary<string, string> WarningMessages = new()
+    {
+        ["en"]     = "NaijaShield Alert: The message you just received may be a scam attempt. Do NOT share your OTP, PIN, password, or bank details with anyone. If you are unsure, call your bank directly on their official number.",
+        ["pidgin"] = "NaijaShield Alert: The message wey dem send you fit be scam. Abeg no give anybody your OTP, PIN, password, or bank details. If you no sure, call your bank for their correct number.",
+        ["yo"]     = "NaijaShield Ìkìlọ̀: Ifiranṣẹ tí o gba le jẹ ìdán. Má fún ẹnikẹní ní OTP, PIN, ọrọ aṣínà, tàbí àwọn aláyé ilé-ifowópamọ́ rẹ. Bí o bá ṣiyèméjì, pè ilé-ifowópamọ́ rẹ lójú ìtọ́kasí wọn.",
+        ["ha"]     = "NaijaShield Gargadi: Sakon da ka karba na iya zama zamba. Kada ka ba kowa OTP, PIN, kalmar sirri, ko bayanan bankin ka. Idan ba ka tabbata ba, kira bankin ka a lambar hukuma.",
+        ["ig"]     = "NaijaShield Ọchọcha: Ozi i nwetara nwere ike ịbụ nzuzo. Emekwala ka onye ọ bụla nweta OTP, PIN, okwuntughe, ma ọ bụ ozi banki gị. Kpọọ banki gị n'ọnụ ọnụ ha ma ọ bụrụ na ị na-adịghị ntụkwasị obi."
+    };
 
     public SmsService(
         CosmosClient cosmosClient,
@@ -42,16 +47,17 @@ public class SmsService
 
         var redacted = RedactPii(request.Text);
 
-        var (decision, confidence, reason) = await ClassifyAsync(redacted, request.From);
+        var (decision, confidence, reason, language) = await ClassifyAsync(redacted, request.From);
 
         bool warningSent = false;
         if (decision == "BLOCK")
         {
-            _logger.LogWarning("[SMS] BLOCK decision ({Confidence:P0}) for message from {From}. Reason: {Reason}",
-                confidence, request.From, reason);
+            _logger.LogWarning(
+                "[SMS] BLOCK decision ({Confidence:P0}) lang={Lang} for message from {From}. Reason: {Reason}",
+                confidence, language, request.From, reason);
 
-            // Warn the recipient (the subscriber who received the scam SMS)
-            warningSent = await _at.SendSmsAsync(request.To, WarningMessage);
+            var warningText = WarningMessages.GetValueOrDefault(language, WarningMessages["en"]);
+            warningSent = await _at.SendSmsAsync(request.To, warningText);
         }
 
         var smsEvent = new SmsEvent
@@ -88,24 +94,25 @@ public class SmsService
     // ─────────────────────────────────────────────
     // LLM CLASSIFICATION
     // ─────────────────────────────────────────────
-    private async Task<(string decision, float confidence, string reason)> ClassifyAsync(
+    private async Task<(string decision, float confidence, string reason, string language)> ClassifyAsync(
         string text, string from)
     {
         if (_kernel == null)
         {
             _logger.LogWarning("[SMS] Kernel not available — defaulting to ALLOW");
-            return ("ALLOW", 0f, "AI unavailable");
+            return ("ALLOW", 0f, "AI unavailable", "en");
         }
 
         var prompt = $$"""
             You are a fraud detection AI embedded in a Nigerian telecom security system.
             Analyze the SMS below and decide if it is a scam or fraud attempt.
+            The message may be in English, Nigerian Pidgin, Yoruba, Hausa, or Igbo — analyze it regardless.
 
             Sender number: {{from}}
             Message: "{{text}}"
 
             Nigerian fraud patterns to detect:
-            - OTP, PIN, or password requests ("send your OTP", "enter your PIN to verify")
+            - OTP, PIN, or password requests ("send your OTP", "fi OTP rẹ ranṣẹ", "biko ziga m OTP")
             - Bank/institution impersonation ("I am calling from GTBank", "CBN directive")
             - Urgency manipulation ("Your account will be blocked", "Act now or lose access")
             - Social engineering ("Hi Mum, I need urgent money", "I am in trouble")
@@ -114,9 +121,11 @@ public class SmsService
             - USSD transfer tricks ("Dial *737# to reverse a wrong transfer")
 
             Respond with ONLY a valid JSON object — no markdown, no explanation:
-            {"decision":"BLOCK","confidence":0.95,"reason":"brief explanation"}
+            {"decision":"BLOCK","confidence":0.95,"reason":"brief explanation","language":"en"}
             or
-            {"decision":"ALLOW","confidence":0.98,"reason":"legitimate message"}
+            {"decision":"ALLOW","confidence":0.98,"reason":"legitimate message","language":"pidgin"}
+
+            Language codes: en=English, pidgin=Nigerian Pidgin, yo=Yoruba, ha=Hausa, ig=Igbo.
             """;
 
         try
@@ -124,7 +133,6 @@ public class SmsService
             var result = await _kernel.InvokePromptAsync(prompt);
             var json = result.ToString().Trim();
 
-            // Strip markdown code fences if the model adds them
             if (json.StartsWith("```")) json = Regex.Replace(json, @"```[a-z]*\n?", "").Trim().TrimEnd('`');
 
             using var doc = JsonDocument.Parse(json);
@@ -133,13 +141,16 @@ public class SmsService
             var decision = root.GetProperty("decision").GetString() ?? "ALLOW";
             var confidence = root.GetProperty("confidence").GetSingle();
             var reason = root.GetProperty("reason").GetString() ?? string.Empty;
+            var language = root.TryGetProperty("language", out var langEl)
+                ? (langEl.GetString() ?? "en")
+                : "en";
 
-            return (decision.ToUpperInvariant(), confidence, reason);
+            return (decision.ToUpperInvariant(), confidence, reason, language);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[SMS] Classification failed — defaulting to ALLOW");
-            return ("ALLOW", 0f, "Classification error");
+            return ("ALLOW", 0f, "Classification error", "en");
         }
     }
 }

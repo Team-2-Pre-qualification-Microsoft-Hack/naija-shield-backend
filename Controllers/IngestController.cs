@@ -143,6 +143,7 @@ public sealed class IngestController : ControllerBase
                     payload.From,
                     redactedText,
                     status.ToUpperInvariant(),
+                    analysis.DetectedLanguage,
                     cancellationToken);
             }
 
@@ -291,6 +292,7 @@ public sealed class IngestController : ControllerBase
                 await _alerts.SendVoiceAlertAsync(
                     payload.To,
                     status.ToUpperInvariant(),
+                    analysis.DetectedLanguage,
                     cancellationToken);
             }
 
