@@ -75,6 +75,14 @@ public sealed class DemoController : ControllerBase
             "Pidgin USSD reversal trick — the code actually initiates a transfer FROM the victim"),
     ];
 
+    // Demo victim pool — used when no victimNumber is supplied so every simulated
+    // incident has a destination number, enabling fraud-ring graph edges.
+    private static readonly string[] DemoVictimPool =
+    [
+        "+2348030000001", "+2348030000002", "+2348030000003",
+        "+2347050000001", "+2347050000002", "+2348090000001"
+    ];
+
     private static readonly Dictionary<string, string> SmsWarnings = new()
     {
         ["en"]     = "NaijaShield Alert: The message you just received is likely a scam. Do NOT share your OTP, PIN, or bank details with anyone. Call your bank on their official number.",
@@ -99,6 +107,7 @@ public sealed class DemoController : ControllerBase
     private readonly IHubContext<ThreatHub> _hub;
     private readonly AfricasTalkingService _at;
     private readonly PhoneLocationService _location;
+    private readonly AzureTtsService _tts;
     private readonly ILogger<DemoController> _logger;
 
     public DemoController(
@@ -108,6 +117,7 @@ public sealed class DemoController : ControllerBase
         IHubContext<ThreatHub> hub,
         AfricasTalkingService at,
         PhoneLocationService location,
+        AzureTtsService tts,
         ILogger<DemoController> logger)
     {
         _pii        = pii;
@@ -116,6 +126,7 @@ public sealed class DemoController : ControllerBase
         _hub        = hub;
         _at         = at;
         _location   = location;
+        _tts        = tts;
         _logger     = logger;
     }
 
@@ -220,22 +231,30 @@ public sealed class DemoController : ControllerBase
         steps.Add(Step("geolocation", new { lat, lng, state, lga }, sw));
 
         // ── Step 5: Cosmos DB persist ─────────────────────────────────────────
+        // Resolve victim number: explicit > demo pool (ensures every incident has a To
+        // for fraud-ring graph edge building)
+        var to = !string.IsNullOrWhiteSpace(victimNumber)
+            ? victimNumber
+            : DemoVictimPool[Random.Shared.Next(DemoVictimPool.Length)];
+
         var incident = new ThreatIncident
         {
-            Id             = $"INC-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
-            Timestamp      = DateTimeOffset.UtcNow.ToString("o"),
-            Channel        = channel,
-            From           = from,
-            Preview        = redacted.Length > 80 ? redacted[..80] : redacted,
-            RiskScore      = analysis.RiskScore,
-            Classification = analysis.Classification,
-            Explanation    = analysis.Explanation,
-            Status         = status,
-            RawPayload     = redacted,
-            Lat            = lat,
-            Lng            = lng,
-            State          = state,
-            Lga            = lga
+            Id                = $"INC-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
+            Timestamp         = DateTimeOffset.UtcNow.ToString("o"),
+            Channel           = channel,
+            From              = from,
+            To                = to,
+            Preview           = redacted.Length > 80 ? redacted[..80] : redacted,
+            RiskScore         = analysis.RiskScore,
+            Classification    = analysis.Classification,
+            Explanation       = analysis.Explanation,
+            Status            = status,
+            RawPayload        = redacted,
+            DetectedLanguage  = analysis.DetectedLanguage,
+            Lat               = lat,
+            Lng               = lng,
+            State             = state,
+            Lga               = lga
         };
 
         await _repository.SaveAsync(incident, cancellationToken);
@@ -324,6 +343,24 @@ public sealed class DemoController : ControllerBase
             } : null,
             incident
         });
+    }
+
+    // ── GET /api/demo/voice-warning?lang=en ──────────────────────────────────
+    /// <summary>
+    /// Synthesises the NaijaShield warning message as MP3 audio via Azure TTS
+    /// using the Nigerian-English neural voice (en-NG-EzinneNeural).
+    /// The browser can play this directly — used by the /demo/call demo page.
+    /// </summary>
+    [HttpGet("voice-warning")]
+    public async Task<IActionResult> VoiceWarning(
+        [FromQuery] string lang = "en",
+        CancellationToken cancellationToken = default)
+    {
+        var text = VoiceWarnings.GetValueOrDefault(lang, VoiceWarnings["en"]);
+        var audio = await _tts.SynthesizeAsync(text, cancellationToken);
+        if (audio is null)
+            return StatusCode(503, new { error = "TTS synthesis unavailable — check Azure-Speech-Key config" });
+        return File(audio, "audio/mpeg");
     }
 
     private static object Step(string name, object result, System.Diagnostics.Stopwatch sw) =>

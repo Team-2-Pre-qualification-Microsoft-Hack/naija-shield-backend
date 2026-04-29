@@ -158,6 +158,12 @@ builder.Services.AddScoped<IAlertService,         LoggingAlertService>();
 // Location lookup
 builder.Services.AddSingleton<PhoneLocationService>();
 
+// Azure TTS — used by voice-warning endpoint and /demo/call page
+builder.Services.AddSingleton<AzureTtsService>();
+
+// Fraud Ring graph analysis — stateless, scoped per request
+builder.Services.AddScoped<FraudRingService>();
+
 // Jambonz call-routing + LCC
 builder.Services.AddSingleton<JambonzService>();
 
@@ -239,6 +245,7 @@ app.MapHub<ThreatHub>("/hubs/threat");
 app.MapAuthEndpoints();
 app.MapJambonzEndpoints();
 app.MapAtVoiceEndpoints();
+app.MapDemoPageEndpoints();
 
 // Smoke-test endpoint (retained from initial setup)
 app.MapGet("/api/test-scam", async (Kernel kernel) =>

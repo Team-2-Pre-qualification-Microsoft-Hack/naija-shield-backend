@@ -1,0 +1,174 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "logicAppName": {
+      "type": "string",
+      "defaultValue": "naijashield-ring-seeder",
+      "metadata": { "description": "Name of the Logic App resource" }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "apiBaseUrl": {
+      "type": "string",
+      "metadata": { "description": "Base URL of the NaijaShield API" }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('logicAppName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "apiBaseUrl": { "type": "string" }
+          },
+          "triggers": {
+            "manual": {
+              "type": "Request",
+              "kind": "Http",
+              "inputs": { "schema": {} },
+              "description": "Trigger once from Azure Portal to seed a 3-member fraud ring"
+            }
+          },
+          "actions": {
+
+            "Ring_A_01_en_vishing_cbn": {
+              "type": "Http",
+              "runAfter": {},
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": { "scriptId": "en-vishing-cbn",          "from": "+2348099001001", "victimNumber": "+2348030000001" }
+              }
+            },
+            "Ring_A_02_pidgin_otp": {
+              "type": "Http",
+              "runAfter": { "Ring_A_01_en_vishing_cbn": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": { "scriptId": "pidgin-otp-social",       "from": "+2348099001001", "victimNumber": "+2348030000002" }
+              }
+            },
+            "Ring_A_03_en_otp_gtbank": {
+              "type": "Http",
+              "runAfter": { "Ring_A_02_pidgin_otp": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": { "scriptId": "en-otp-gtbank",           "from": "+2348099001001", "victimNumber": "+2348030000003" }
+              }
+            },
+
+            "Ring_B_01_hausa_otp": {
+              "type": "Http",
+              "runAfter": { "Ring_A_03_en_otp_gtbank": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": { "scriptId": "hausa-otp-zenith",        "from": "+2348099001002", "victimNumber": "+2348030000001" }
+              }
+            },
+            "Ring_B_02_yoruba_otp": {
+              "type": "Http",
+              "runAfter": { "Ring_B_01_hausa_otp": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": { "scriptId": "yoruba-otp-gtbank",       "from": "+2348099001002", "victimNumber": "+2348030000002" }
+              }
+            },
+            "Ring_B_03_family_impersonation": {
+              "type": "Http",
+              "runAfter": { "Ring_B_02_yoruba_otp": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": { "scriptId": "en-family-impersonation",  "from": "+2348099001002", "victimNumber": "+2347050000001" }
+              }
+            },
+
+            "Ring_C_01_igbo_otp": {
+              "type": "Http",
+              "runAfter": { "Ring_B_03_family_impersonation": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": { "scriptId": "igbo-otp-uba",            "from": "+2348099001003", "victimNumber": "+2348030000003" }
+              }
+            },
+            "Ring_C_02_ussd_trick": {
+              "type": "Http",
+              "runAfter": { "Ring_C_01_igbo_otp": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": { "scriptId": "pidgin-ussd-trick",       "from": "+2348099001003", "victimNumber": "+2348030000001" }
+              }
+            },
+            "Ring_C_03_en_vishing_cbn": {
+              "type": "Http",
+              "runAfter": { "Ring_C_02_ussd_trick": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": { "scriptId": "en-vishing-cbn",          "from": "+2348099001003", "victimNumber": "+2347050000001" }
+              }
+            },
+
+            "Query_Fraud_Rings": {
+              "type": "Http",
+              "runAfter": { "Ring_C_03_en_vishing_cbn": ["Succeeded"] },
+              "inputs": {
+                "method": "GET",
+                "uri": "@{parameters('apiBaseUrl')}/api/fraud-rings?hours=1&minCallers=2"
+              },
+              "description": "Verify ring detection immediately after seeding"
+            },
+
+            "Compose_Summary": {
+              "type": "Compose",
+              "runAfter": { "Query_Fraud_Rings": ["Succeeded"] },
+              "inputs": {
+                "message":        "Fraud ring seeding complete",
+                "scammerNumbers": ["+2348099001001", "+2348099001002", "+2348099001003"],
+                "victimNumbers":  ["+2348030000001", "+2348030000002", "+2348030000003", "+2347050000001"],
+                "incidentsSeeded": 9,
+                "sharedVictims":  ["+2348030000001", "+2348030000002", "+2348030000003", "+2347050000001"],
+                "ringAnalysis":   "@body('Query_Fraud_Rings')"
+              }
+            }
+
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "apiBaseUrl": { "value": "[parameters('apiBaseUrl')]" }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "logicAppUrl": {
+      "type": "string",
+      "value": "[listCallbackUrl(resourceId('Microsoft.Logic/workflows/triggers', parameters('logicAppName'), 'manual'), '2019-05-01').value]"
+    }
+  }
+}

@@ -70,4 +70,12 @@ public class ThreatIncident
     /// <summary>Local Government Area within the state.</summary>
     [JsonProperty("lga", NullValueHandling = NullValueHandling.Ignore)]
     public string? Lga { get; set; }
+
+    /// <summary>Destination MSISDN — the victim or recipient being targeted by the scammer.</summary>
+    [JsonProperty("to", NullValueHandling = NullValueHandling.Ignore)]
+    public string? To { get; set; }
+
+    /// <summary>BCP-47 language code detected by the LLM: en | pidgin | yo | ha | ig.</summary>
+    [JsonProperty("detectedLanguage", NullValueHandling = NullValueHandling.Ignore)]
+    public string? DetectedLanguage { get; set; }
 }
