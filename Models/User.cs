@@ -43,6 +43,4 @@ public class User
     [JsonProperty("createdAt")]
     public DateTime CreatedAt { get; set; }
 
-    [JsonProperty("deletedAt")]
-    public DateTime DeletedAt {get; set;}
 }
