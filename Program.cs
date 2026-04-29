@@ -19,8 +19,16 @@ var builder = WebApplication.CreateBuilder(args);
 // In Production, they are pulled from Azure Key Vault via DefaultAzureCredential.
 if (builder.Environment.IsProduction())
 {
-    var keyVaultUri = new Uri("https://kv-naijashield-dev.vault.azure.net/");
-    builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+    try
+    {
+        var keyVaultUri = new Uri("https://rg-naijashield-dev-key.vault.azure.net/");
+        builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+        Console.WriteLine("Key Vault loaded successfully.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Key Vault unavailable — falling back to App Settings: {ex.Message}");
+    }
 }
 
 // ==========================================
