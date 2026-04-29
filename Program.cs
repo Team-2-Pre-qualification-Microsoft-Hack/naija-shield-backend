@@ -17,7 +17,7 @@ var builder = WebApplication.CreateBuilder(args);
 // ==========================================
 // In Development, secrets come from appsettings.Development.json (git-ignored).
 // In Production, they are pulled from Azure Key Vault via DefaultAzureCredential.
-if (builder.Environment.IsProduction())
+if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")))
 {
     try
     {
