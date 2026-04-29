@@ -161,6 +161,10 @@ builder.Services.AddSingleton<PhoneLocationService>();
 // Jambonz call-routing + LCC
 builder.Services.AddSingleton<JambonzService>();
 
+// Report repository + AI narrative writer
+builder.Services.AddScoped<IReportRepository, CosmosReportRepository>();
+builder.Services.AddScoped<ReportNarrativeService>();
+
 // Auth pipeline
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<RateLimitService>();

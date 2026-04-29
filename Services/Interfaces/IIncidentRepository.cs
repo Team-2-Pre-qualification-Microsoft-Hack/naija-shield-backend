@@ -29,4 +29,14 @@ public interface IIncidentRepository
     Task<IReadOnlyList<ThreatIncident>> GetRecentAsync(
         int limit = 100,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all incidents whose Cosmos <c>_ts</c> falls within
+    /// [<paramref name="from"/>, <paramref name="to"/>], ordered newest first.
+    /// Used by the report generator to scope data to a reporting period.
+    /// </summary>
+    Task<IReadOnlyList<ThreatIncident>> GetByDateRangeAsync(
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken = default);
 }
