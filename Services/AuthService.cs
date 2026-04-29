@@ -301,6 +301,39 @@ public class AuthService
     }
 
     // =============================================
+    // LIST USERS (Admin only)
+    // =============================================
+    public async Task<IResult> GetUsersAsync()
+    {
+        var query = _usersContainer.GetItemLinqQueryable<User>(
+            requestOptions: new QueryRequestOptions { MaxItemCount = -1 })
+            .ToFeedIterator();
+
+        var users = new List<object>();
+        while (query.HasMoreResults)
+        {
+            var batch = await query.ReadNextAsync();
+            foreach (var u in batch)
+            {
+                users.Add(new
+                {
+                    id           = u.Id,
+                    name         = u.Name,
+                    email        = u.Email,
+                    role         = u.Role.ToString(),
+                    status       = u.Status.ToString(),
+                    organisation = u.Organisation,
+                    lastActive   = u.LastActive,
+                    createdAt    = u.CreatedAt,
+                    invitePending = u.Status == UserStatus.Pending
+                });
+            }
+        }
+
+        return Results.Ok(new { total = users.Count, users });
+    }
+
+    // =============================================
     // SEED DEFAULT ADMIN
     // =============================================
     public async Task SeedDefaultAdminAsync()

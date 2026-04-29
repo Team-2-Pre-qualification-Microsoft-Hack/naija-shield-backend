@@ -80,6 +80,29 @@ public static class AuthEndpoints
         .Produces<ErrorResponse>(401);
 
         // ===================================================
+        // GET /api/auth/users — SYSTEM_ADMIN only
+        // ===================================================
+        auth.MapGet("/users", async (AuthService authService, HttpContext context) =>
+        {
+            var roleClaim = context.User.FindFirst("role")?.Value
+                          ?? context.User.FindFirst(ClaimTypes.Role)?.Value;
+            if (roleClaim != "SYSTEM_ADMIN")
+            {
+                return Results.Json(new ErrorResponse
+                {
+                    Error = "INSUFFICIENT_PERMISSIONS",
+                    Message = "Only System Admins can list users"
+                }, statusCode: 403);
+            }
+
+            return await authService.GetUsersAsync();
+        })
+        .RequireAuthorization()
+        .WithName("GetUsers")
+        .Produces(200)
+        .Produces<ErrorResponse>(403);
+
+        // ===================================================
         // POST /api/auth/logout — Authenticated
         // ===================================================
         auth.MapPost("/logout", async (AuthService authService, HttpContext context) =>
