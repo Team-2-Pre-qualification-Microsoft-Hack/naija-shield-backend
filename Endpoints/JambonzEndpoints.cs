@@ -23,29 +23,34 @@ public static class JambonzEndpoints
     }
 
     // ── Task 1: Incoming call webhook ─────────────────────────────────────────
-    // Jambonz hits this when a call arrives. We return two verbs:
-    //   listen → streams mixed audio to our WebSocket for scam detection
-    //   dial   → bridges the call to the victim's real number
+    // Jambonz hits this when a call arrives.
+    // DIAGNOSTIC MODE: returns a hardcoded "say" verb to confirm the pipe is working.
+    // Once confirmed, replace with the listen+dial response below.
     private static IResult IncomingCall(IConfiguration config)
     {
-        var serverUrl    = config["Jambonz:ServerUrl"] ?? "https://localhost:5000";
-        var victimNumber = config["Jambonz:VictimPhoneNumber"] ?? string.Empty;
-
-        // Convert HTTPS base URL to WSS for the listen verb
-        var wsUrl = serverUrl
-            .Replace("https://", "wss://", StringComparison.OrdinalIgnoreCase)
-            .Replace("http://",  "ws://",  StringComparison.OrdinalIgnoreCase)
-            + "/ws/audio";
-
         return Results.Ok(new object[]
         {
-            new { verb = "listen", url = wsUrl, mixType = "mixed" },
-            new
-            {
-                verb   = "dial",
-                target = new[] { new { type = "phone", number = victimNumber } }
-            }
+            new { verb = "say", text = "Hello! The Naija Shield wiretap is fully operational." }
         });
+
+        // ── Production response (restore after pipe is confirmed) ──────────────
+        // var serverUrl    = config["Jambonz:ServerUrl"] ?? "https://localhost:5000";
+        // var victimNumber = config["Jambonz:VictimPhoneNumber"] ?? string.Empty;
+        //
+        // var wsUrl = serverUrl
+        //     .Replace("https://", "wss://", StringComparison.OrdinalIgnoreCase)
+        //     .Replace("http://",  "ws://",  StringComparison.OrdinalIgnoreCase)
+        //     + "/ws/audio";
+        //
+        // return Results.Ok(new object[]
+        // {
+        //     new { verb = "listen", url = wsUrl, mixType = "mixed" },
+        //     new
+        //     {
+        //         verb   = "dial",
+        //         target = new[] { new { type = "phone", number = victimNumber } }
+        //     }
+        // });
     }
 
     // Voice warning texts keyed by language code — spoken via Jambonz TTS (say verb).
