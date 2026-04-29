@@ -1,7 +1,11 @@
 using System.Text;
 using Azure.Identity;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Azure.Cosmos;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using Microsoft.SemanticKernel;
+using naija_shield_backend.Endpoints;
 using naija_shield_backend.Hubs;
 using naija_shield_backend.Services;
 using naija_shield_backend.Services.Interfaces;
@@ -11,7 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 // ==========================================
 // 1. KEY VAULT — PRODUCTION ONLY
 // ==========================================
-// In Development, secrets are loaded from appsettings.Development.json (git-ignored).
+// In Development, secrets come from appsettings.Development.json (git-ignored).
 // In Production, they are pulled from Azure Key Vault via DefaultAzureCredential.
 if (builder.Environment.IsProduction())
 {
@@ -22,12 +26,10 @@ if (builder.Environment.IsProduction())
 // ==========================================
 // 2. READ SECRETS FROM CONFIGURATION
 // ==========================================
-string openAiKey         = builder.Configuration["OpenAI-Key"]
+string openAiKey        = builder.Configuration["OpenAI-Key"]
     ?? throw new InvalidOperationException("OpenAI-Key is not configured");
-string cosmosConnString  = builder.Configuration["Cosmos-Connection-String"]
+string cosmosConnString = builder.Configuration["Cosmos-Connection-String"]
     ?? throw new InvalidOperationException("Cosmos-Connection-String is not configured");
-string searchKey         = builder.Configuration["Search-Key"]
-    ?? throw new InvalidOperationException("Search-Key is not configured");
 string signalrConnString = builder.Configuration["SignalR-Connection-String"]
     ?? throw new InvalidOperationException("SignalR-Connection-String is not configured");
 
@@ -35,8 +37,6 @@ string signalrConnString = builder.Configuration["SignalR-Connection-String"]
 // 3. CONTROLLERS + SIGNALR
 // ==========================================
 builder.Services.AddControllers();
-
-// Azure SignalR Service — connection string sourced from config above
 builder.Services.AddSignalR().AddAzureSignalR(signalrConnString);
 
 // ==========================================
@@ -54,73 +54,160 @@ builder.Services.AddKernel()
         apiKey: openAiKey);
 
 // ==========================================
-// 5. COSMOS DB — SINGLETON CLIENT
+// 5. COSMOS DB — SINGLETON CLIENT + CONTAINER INIT
 // ==========================================
-builder.Services.AddSingleton(new CosmosClient(cosmosConnString));
+var cosmosClient = new CosmosClient(cosmosConnString);
+builder.Services.AddSingleton(cosmosClient);
+
+Console.WriteLine("Initializing Cosmos DB containers...");
+var database = await cosmosClient.CreateDatabaseIfNotExistsAsync("NaijaShieldDB");
+await database.Database.CreateContainerIfNotExistsAsync("Users", "/id");
+await database.Database.CreateContainerIfNotExistsAsync("RefreshTokens", "/userId");
+await database.Database.CreateContainerIfNotExistsAsync("SmsEvents", "/id");
+Console.WriteLine("Cosmos DB containers ready.");
 
 // ==========================================
-// 6. HTTP CLIENTS
+// 6. JWT AUTHENTICATION
+// ==========================================
+var jwtSection = builder.Configuration.GetSection("Jwt");
+var jwtSecret  = jwtSection["Secret"]
+    ?? throw new InvalidOperationException("Jwt:Secret is not configured");
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme    = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.MapInboundClaims = false;
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+        ValidateIssuer           = true,
+        ValidIssuer              = jwtSection["Issuer"],
+        ValidateAudience         = true,
+        ValidAudience            = jwtSection["Audience"],
+        ValidateLifetime         = true,
+        ClockSkew                = TimeSpan.Zero
+    };
+
+    options.Events = new JwtBearerEvents
+    {
+        OnChallenge = context =>
+        {
+            context.HandleResponse();
+            context.Response.StatusCode  = 401;
+            context.Response.ContentType = "application/json";
+            return context.Response.WriteAsJsonAsync(
+                new { error = "TOKEN_EXPIRED", message = "Access token has expired" });
+        },
+        OnForbidden = context =>
+        {
+            context.Response.StatusCode  = 403;
+            context.Response.ContentType = "application/json";
+            return context.Response.WriteAsJsonAsync(
+                new { error = "INSUFFICIENT_PERMISSIONS", message = "You do not have permission to access this resource" });
+        }
+    };
+});
+
+builder.Services.AddAuthorization();
+
+// ==========================================
+// 7. HTTP CLIENTS
 // ==========================================
 var sidecarBaseUrl = builder.Configuration["AiSidecar:BaseUrl"] ?? "http://localhost:8000";
 builder.Services.AddHttpClient("AiSidecar", client =>
 {
     client.BaseAddress = new Uri(sidecarBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(30);
+    client.Timeout     = TimeSpan.FromSeconds(30);
 });
+builder.Services.AddHttpClient<AfricasTalkingService>();
 
 // ==========================================
-// 7. DOMAIN SERVICES (DI REGISTRATIONS)
+// 8. DOMAIN SERVICES (DI)
 // ==========================================
-builder.Services.AddScoped<IPiiRedactionService, PlaceholderPiiRedactionService>();
-builder.Services.AddScoped<IAlertService, LoggingAlertService>();
+// Threat pipeline
+builder.Services.AddScoped<IPiiRedactionService,  PlaceholderPiiRedactionService>();
 builder.Services.AddScoped<IThreatScoringService, ThreatScoringService>();
-builder.Services.AddScoped<IIncidentRepository, CosmosIncidentRepository>();
+builder.Services.AddScoped<IIncidentRepository,   CosmosIncidentRepository>();
+builder.Services.AddScoped<IAlertService,         LoggingAlertService>();
+
+// Auth pipeline
+builder.Services.AddSingleton<TokenService>();
+builder.Services.AddSingleton<RateLimitService>();
+builder.Services.AddSingleton<EmailService>();
+builder.Services.AddScoped<AuthService>();
 
 // ==========================================
-// 8. SWAGGER
+// 9. SWAGGER
 // ==========================================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new() { Title = "Naija Shield API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "NaijaShield API", Version = "v1",
+        Description = "Backend API for the NaijaShield cybersecurity platform" });
+
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name        = "Authorization",
+        Type        = SecuritySchemeType.Http,
+        Scheme      = "bearer",
+        BearerFormat = "JWT",
+        In          = ParameterLocation.Header,
+        Description = "Enter your JWT token (without 'Bearer ' prefix)"
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+            },
+            Array.Empty<string>()
+        }
+    });
 });
 
 // ==========================================
-// 9. CORS
+// 10. CORS
 // ==========================================
-var frontendOrigin = builder.Configuration["Cors:FrontendOrigin"] ?? "http://localhost:3000";
+// Dev uses AllowedOrigins array (localhost:3000 + localhost:5173).
+// Prod falls back to Cors:FrontendOrigin (set the deployed URL there).
+var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
+    ?? [builder.Configuration["Cors:FrontendOrigin"] ?? "http://localhost:3000"];
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
-        policy.WithOrigins(frontendOrigin)
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());
 });
 
 // ==========================================
-// 10. BUILD & CONFIGURE PIPELINE
+// 11. BUILD + CONFIGURE PIPELINE
 // ==========================================
 var app = builder.Build();
 
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Naija Shield API v1");
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "NaijaShield API v1");
     c.RoutePrefix = "swagger";
 });
 
 app.UseCors("FrontendPolicy");
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 app.MapHub<ThreatHub>("/hubs/threat");
-
-// ==========================================
-// 11. LEGACY SMOKE-TEST ENDPOINT (retained)
-// ==========================================
 app.MapAuthEndpoints();
-app.MapSmsEndpoints();
 
-// Keep the original test endpoint
+// Smoke-test endpoint (retained from initial setup)
 app.MapGet("/api/test-scam", async (Kernel kernel) =>
 {
     const string prompt = """
@@ -133,9 +220,9 @@ app.MapGet("/api/test-scam", async (Kernel kernel) =>
         var response = await kernel.InvokePromptAsync(prompt);
         return Results.Ok(new
         {
-            status = "Success",
+            status               = "Success",
             test_database_status = "Cosmos DB Client Initialized",
-            ai_decision = response.ToString()
+            ai_decision          = response.ToString()
         });
     }
     catch (Exception ex)
@@ -145,7 +232,7 @@ app.MapGet("/api/test-scam", async (Kernel kernel) =>
 });
 
 // ==========================================
-// 8. SEED DEFAULT ADMIN
+// 12. SEED DEFAULT ADMIN
 // ==========================================
 using (var scope = app.Services.CreateScope())
 {

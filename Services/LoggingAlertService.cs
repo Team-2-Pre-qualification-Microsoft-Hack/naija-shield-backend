@@ -3,25 +3,32 @@ using naija_shield_backend.Services.Interfaces;
 namespace naija_shield_backend.Services;
 
 /// <summary>
-/// Placeholder alert service that writes alert details to structured logs.
-/// Replace or supplement this implementation with:
-/// — Africa's Talking outbound SMS for <see cref="SendSmsAlertAsync"/>
-/// — Spitch TTS injected via the Python sidecar for <see cref="SendVoiceAlertAsync"/>
-/// All call sites depend on <see cref="IAlertService"/> so no controller code
-/// changes are required when real delivery is wired up.
+/// Sends outbound alerts via Africa's Talking SMS and logs every action.
+/// Voice alerts fall back to SMS until the Spitch TTS sidecar injection is wired up.
 /// </summary>
 public sealed class LoggingAlertService : IAlertService
 {
+    private readonly AfricasTalkingService _at;
     private readonly ILogger<LoggingAlertService> _logger;
 
-    /// <summary>Initialises the service with a structured logger.</summary>
-    public LoggingAlertService(ILogger<LoggingAlertService> logger)
+    private const string SmsWarning =
+        "NaijaShield Alert: A suspicious message was just sent to your number. " +
+        "Do NOT share your OTP, PIN, or bank details with anyone. " +
+        "If unsure, call your bank on their official number.";
+
+    private const string VoiceWarning =
+        "NaijaShield Alert: A suspicious call was just made to your number. " +
+        "Do NOT share your OTP, PIN, or bank details. " +
+        "Hang up and call your bank directly on their official number.";
+
+    public LoggingAlertService(AfricasTalkingService at, ILogger<LoggingAlertService> logger)
     {
+        _at = at;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public Task SendSmsAlertAsync(
+    public async Task SendSmsAlertAsync(
         string to,
         string originalMessage,
         string action,
@@ -31,12 +38,14 @@ public sealed class LoggingAlertService : IAlertService
             "[ALERT][SMS] Action={Action} Recipient={To} RedactedMessage={Message}",
             action, to, originalMessage);
 
-        // TODO: Implement Africa's Talking outbound SMS delivery
-        return Task.CompletedTask;
+        var sent = await _at.SendSmsAsync(to, SmsWarning);
+
+        if (!sent)
+            _logger.LogError("[ALERT][SMS] Africa's Talking delivery failed for {To}", to);
     }
 
     /// <inheritdoc />
-    public Task SendVoiceAlertAsync(
+    public async Task SendVoiceAlertAsync(
         string to,
         string action,
         CancellationToken cancellationToken = default)
@@ -45,7 +54,10 @@ public sealed class LoggingAlertService : IAlertService
             "[ALERT][VOICE] Action={Action} Recipient={To}",
             action, to);
 
-        // TODO: Inject Spitch TTS warning via Python sidecar POST /inject-warning
-        return Task.CompletedTask;
+        // SMS fallback — Spitch TTS call injection via Python sidecar is a future step
+        var sent = await _at.SendSmsAsync(to, VoiceWarning);
+
+        if (!sent)
+            _logger.LogError("[ALERT][VOICE] Africa's Talking SMS fallback failed for {To}", to);
     }
 }

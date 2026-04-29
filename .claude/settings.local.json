@@ -8,7 +8,8 @@
       "Bash(ffmpeg -version)",
       "Bash(python -c \"import pydub; print\\('pydub available'\\)\")",
       "Bash(python -c \"import soundfile; print\\('soundfile available'\\)\")",
-      "Bash(python -c \"import librosa; print\\('librosa available'\\)\")"
+      "Bash(python -c \"import librosa; print\\('librosa available'\\)\")",
+      "Bash(taskkill /PID 27072 /F)"
     ]
   }
 }

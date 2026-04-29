@@ -97,12 +97,12 @@ public class SmsService
             return ("ALLOW", 0f, "AI unavailable");
         }
 
-        var prompt = $"""
+        var prompt = $$"""
             You are a fraud detection AI embedded in a Nigerian telecom security system.
             Analyze the SMS below and decide if it is a scam or fraud attempt.
 
-            Sender number: {from}
-            Message: "{text}"
+            Sender number: {{from}}
+            Message: "{{text}}"
 
             Nigerian fraud patterns to detect:
             - OTP, PIN, or password requests ("send your OTP", "enter your PIN to verify")
@@ -114,9 +114,9 @@ public class SmsService
             - USSD transfer tricks ("Dial *737# to reverse a wrong transfer")
 
             Respond with ONLY a valid JSON object — no markdown, no explanation:
-            {{"decision":"BLOCK","confidence":0.95,"reason":"brief explanation"}}
+            {"decision":"BLOCK","confidence":0.95,"reason":"brief explanation"}
             or
-            {{"decision":"ALLOW","confidence":0.98,"reason":"legitimate message"}}
+            {"decision":"ALLOW","confidence":0.98,"reason":"legitimate message"}
             """;
 
         try
