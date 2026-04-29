@@ -1,0 +1,198 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "logicAppName": {
+      "type": "string",
+      "defaultValue": "naijashield-reputation-seeder",
+      "metadata": { "description": "Name of the Logic App resource" }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "apiBaseUrl": {
+      "type": "string",
+      "metadata": { "description": "Base URL of the NaijaShield API, e.g. https://naija-shield-backend.azurewebsites.net" }
+    },
+    "scammerNumber": {
+      "type": "string",
+      "defaultValue": "+2348099000000",
+      "metadata": { "description": "The repeat-offender phone number to seed incidents for" }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('logicAppName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "apiBaseUrl":     { "type": "string" },
+            "scammerNumber":  { "type": "string" }
+          },
+          "triggers": {
+            "manual": {
+              "type": "Request",
+              "kind": "Http",
+              "inputs": { "schema": {} },
+              "description": "Trigger manually from Azure Portal or via HTTP POST to the Logic App URL"
+            }
+          },
+          "actions": {
+
+            "Seed_01_en_otp_gtbank": {
+              "type": "Http",
+              "runAfter": {},
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": {
+                  "scriptId": "en-otp-gtbank",
+                  "from": "@{parameters('scammerNumber')}"
+                }
+              }
+            },
+
+            "Seed_02_pidgin_otp": {
+              "type": "Http",
+              "runAfter": { "Seed_01_en_otp_gtbank": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": {
+                  "scriptId": "pidgin-otp-social",
+                  "from": "@{parameters('scammerNumber')}"
+                }
+              }
+            },
+
+            "Seed_03_yoruba_otp": {
+              "type": "Http",
+              "runAfter": { "Seed_02_pidgin_otp": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": {
+                  "scriptId": "yoruba-otp-gtbank",
+                  "from": "@{parameters('scammerNumber')}"
+                }
+              }
+            },
+
+            "Seed_04_hausa_otp": {
+              "type": "Http",
+              "runAfter": { "Seed_03_yoruba_otp": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": {
+                  "scriptId": "hausa-otp-zenith",
+                  "from": "@{parameters('scammerNumber')}"
+                }
+              }
+            },
+
+            "Seed_05_igbo_otp": {
+              "type": "Http",
+              "runAfter": { "Seed_04_hausa_otp": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": {
+                  "scriptId": "igbo-otp-uba",
+                  "from": "@{parameters('scammerNumber')}"
+                }
+              }
+            },
+
+            "Seed_06_en_vishing_cbn": {
+              "type": "Http",
+              "runAfter": { "Seed_05_igbo_otp": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": {
+                  "scriptId": "en-vishing-cbn",
+                  "from": "@{parameters('scammerNumber')}"
+                }
+              }
+            },
+
+            "Seed_07_family_impersonation": {
+              "type": "Http",
+              "runAfter": { "Seed_06_en_vishing_cbn": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": {
+                  "scriptId": "en-family-impersonation",
+                  "from": "@{parameters('scammerNumber')}"
+                }
+              }
+            },
+
+            "Seed_08_ussd_trick": {
+              "type": "Http",
+              "runAfter": { "Seed_07_family_impersonation": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('apiBaseUrl')}/api/demo/simulate-scam-call",
+                "headers": { "Content-Type": "application/json" },
+                "body": {
+                  "scriptId": "pidgin-ussd-trick",
+                  "from": "@{parameters('scammerNumber')}"
+                }
+              }
+            },
+
+            "Query_Reputation": {
+              "type": "Http",
+              "runAfter": { "Seed_08_ussd_trick": ["Succeeded"] },
+              "inputs": {
+                "method": "GET",
+                "uri": "@{parameters('apiBaseUrl')}/api/numbers/@{encodeUriComponent(parameters('scammerNumber'))}/reputation"
+              },
+              "description": "Fetch the reputation profile after seeding so it appears in the run output"
+            },
+
+            "Compose_Summary": {
+              "type": "Compose",
+              "runAfter": { "Query_Reputation": ["Succeeded"] },
+              "inputs": {
+                "message":        "Reputation seeding complete",
+                "scammerNumber":  "@{parameters('scammerNumber')}",
+                "incidentsSeeded": 8,
+                "reputation":     "@body('Query_Reputation')"
+              }
+            }
+
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "apiBaseUrl":    { "value": "[parameters('apiBaseUrl')]" },
+          "scammerNumber": { "value": "[parameters('scammerNumber')]" }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "logicAppUrl": {
+      "type": "string",
+      "value": "[listCallbackUrl(resourceId('Microsoft.Logic/workflows/triggers', parameters('logicAppName'), 'manual'), '2019-05-01').value]"
+    }
+  }
+}
