@@ -55,6 +55,58 @@ public sealed class CosmosIncidentRepository : IIncidentRepository
         return response.Resource;
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ThreatIncident>> GetRecentAsync(
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        var container = await GetContainerAsync(cancellationToken);
+
+        // _ts is the Cosmos DB system timestamp (Unix epoch seconds), always indexed.
+        // Cross-partition query is required because the partition key is /channel.
+        var queryDef = new QueryDefinition(
+            $"SELECT TOP {limit} * FROM c ORDER BY c._ts DESC");
+
+        var results = new List<ThreatIncident>();
+        var iterator = container.GetItemQueryIterator<ThreatIncident>(
+            queryDef,
+            requestOptions: new QueryRequestOptions { MaxItemCount = limit });
+
+        while (iterator.HasMoreResults)
+        {
+            var page = await iterator.ReadNextAsync(cancellationToken);
+            results.AddRange(page);
+        }
+
+        return results.AsReadOnly();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ThreatIncident>> GetByDateRangeAsync(
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken = default)
+    {
+        var container = await GetContainerAsync(cancellationToken);
+
+        // _ts is a Unix epoch integer — always indexed, reliable for range scans.
+        var queryDef = new QueryDefinition(
+            "SELECT * FROM c WHERE c._ts >= @from AND c._ts <= @to ORDER BY c._ts DESC")
+            .WithParameter("@from", from.ToUnixTimeSeconds())
+            .WithParameter("@to",   to.ToUnixTimeSeconds());
+
+        var results  = new List<ThreatIncident>();
+        var iterator = container.GetItemQueryIterator<ThreatIncident>(queryDef);
+
+        while (iterator.HasMoreResults)
+        {
+            var page = await iterator.ReadNextAsync(cancellationToken);
+            results.AddRange(page);
+        }
+
+        return results.AsReadOnly();
+    }
+
     // Ensures the database and container exist, caching the Container reference.
     private async Task<Container> GetContainerAsync(CancellationToken cancellationToken)
     {

@@ -20,6 +20,7 @@ public interface IAlertService
         string to,
         string originalMessage,
         string action,
+        string language = "en",
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -29,9 +30,11 @@ public interface IAlertService
     /// </summary>
     /// <param name="to">MSISDN of the original call recipient to be warned.</param>
     /// <param name="action">The action taken: BLOCK or MONITOR.</param>
+    /// <param name="language">Detected language code (en|pidgin|yo|ha|ig). Used to localise the warning.</param>
     /// <param name="cancellationToken">Propagates notification that operation should be cancelled.</param>
     Task SendVoiceAlertAsync(
         string to,
         string action,
+        string language = "en",
         CancellationToken cancellationToken = default);
 }

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using naija_shield_backend.Hubs;
 using naija_shield_backend.Models;
+using naija_shield_backend.Services;
 using naija_shield_backend.Services.Interfaces;
 
 namespace naija_shield_backend.Controllers;
@@ -25,6 +26,7 @@ public sealed class IngestController : ControllerBase
     private readonly IAlertService _alerts;
     private readonly IHubContext<ThreatHub> _hub;
     private readonly IHttpClientFactory _httpFactory;
+    private readonly PhoneLocationService _location;
     private readonly ILogger<IngestController> _logger;
 
     private static readonly JsonSerializerOptions CamelCaseOptions = new()
@@ -41,6 +43,7 @@ public sealed class IngestController : ControllerBase
         IAlertService alerts,
         IHubContext<ThreatHub> hub,
         IHttpClientFactory httpFactory,
+        PhoneLocationService location,
         ILogger<IngestController> logger)
     {
         _pii = pii;
@@ -49,6 +52,7 @@ public sealed class IngestController : ControllerBase
         _alerts = alerts;
         _hub = hub;
         _httpFactory = httpFactory;
+        _location = location;
         _logger = logger;
     }
 
@@ -102,6 +106,8 @@ public sealed class IngestController : ControllerBase
             var status = DetermineStatus(analysis.RiskScore);
 
             // ── Step 5: Build and persist the Cosmos DB document ──────────
+            var (lat, lng, state, lga) = _location.Lookup(payload.From);
+
             var incident = new ThreatIncident
             {
                 Id = GenerateIncidentId(),
@@ -115,7 +121,11 @@ public sealed class IngestController : ControllerBase
                 Classification = analysis.Classification,
                 Explanation = analysis.Explanation,
                 Status = status,
-                RawPayload = redactedText   // redacted — never the original PII-bearing text
+                RawPayload = redactedText,  // redacted — never the original PII-bearing text
+                Lat = lat,
+                Lng = lng,
+                State = state,
+                Lga = lga
             };
 
             await _repository.SaveAsync(incident, cancellationToken);
@@ -124,13 +134,16 @@ public sealed class IngestController : ControllerBase
             // ── Step 6: Broadcast to dashboard via SignalR ─────────────────
             await BroadcastToFeed(incident, cancellationToken);
 
-            // ── Step 7: Alert the recipient if action is BLOCK or MONITOR ──
+            // ── Step 7: Warn the sender if their message looks like a scam ──
+            // payload.From = the phone that sent the message to the shortcode.
+            // payload.To   = the shortcode (40045) — never the warning destination.
             if (status is "Blocked" or "Monitoring")
             {
                 await _alerts.SendSmsAlertAsync(
-                    payload.To,
+                    payload.From,
                     redactedText,
                     status.ToUpperInvariant(),
+                    analysis.DetectedLanguage,
                     cancellationToken);
             }
 
@@ -244,6 +257,8 @@ public sealed class IngestController : ControllerBase
             var status = DetermineStatus(finalRiskScore);
 
             // ── Step 6: Build and persist Cosmos DB document ───────────────
+            var (vLat, vLng, vState, vLga) = _location.Lookup(payload.From);
+
             var incident = new ThreatIncident
             {
                 Id = GenerateIncidentId(),
@@ -258,7 +273,11 @@ public sealed class IngestController : ControllerBase
                 Explanation = analysis.Explanation,
                 Status = status,
                 RawPayload = redactedTranscript,
-                DeepfakeScore = sidecarResult.DeepfakeScore
+                DeepfakeScore = sidecarResult.DeepfakeScore,
+                Lat = vLat,
+                Lng = vLng,
+                State = vState,
+                Lga = vLga
             };
 
             await _repository.SaveAsync(incident, cancellationToken);
@@ -273,6 +292,7 @@ public sealed class IngestController : ControllerBase
                 await _alerts.SendVoiceAlertAsync(
                     payload.To,
                     status.ToUpperInvariant(),
+                    analysis.DetectedLanguage,
                     cancellationToken);
             }
 

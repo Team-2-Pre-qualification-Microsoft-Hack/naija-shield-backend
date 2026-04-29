@@ -21,4 +21,22 @@ public interface IIncidentRepository
     Task<ThreatIncident> SaveAsync(
         ThreatIncident incident,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the most recent incidents across all channels, ordered newest first.
+    /// Used by the dashboard threat feed table and geospatial heatmap.
+    /// </summary>
+    Task<IReadOnlyList<ThreatIncident>> GetRecentAsync(
+        int limit = 100,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all incidents whose Cosmos <c>_ts</c> falls within
+    /// [<paramref name="from"/>, <paramref name="to"/>], ordered newest first.
+    /// Used by the report generator to scope data to a reporting period.
+    /// </summary>
+    Task<IReadOnlyList<ThreatIncident>> GetByDateRangeAsync(
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken = default);
 }

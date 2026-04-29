@@ -6,6 +6,12 @@
 # dotenv files
 .env
 
+# NaijaShield: Protect local development secrets
+appsettings.Development.json
+appsettings.*.json
+!appsettings.json
+*.local.json
+
 # User-specific files
 *.rsuser
 *.suo
@@ -74,6 +80,7 @@ ScaffoldingReadMe.txt
 # StyleCop
 StyleCopReport.xml
 
+appsettings.Development.json
 # Files built by Visual Studio
 *_i.c
 *_p.c

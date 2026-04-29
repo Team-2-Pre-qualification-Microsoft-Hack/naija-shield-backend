@@ -1,0 +1,130 @@
+NaijaShield: Trust, Safety and Fraud Intelligence Infrastructure
+1. Concept Overview
+NaijaShield is a dual-layer telecommunications security infrastructure designed to operate directly within network and financial messaging systems. It eliminates the need for user-installed applications by embedding fraud detection and intervention mechanisms at the network level.
+The system consists of two tightly coupled layers:
+1.	Side A – Silent Shield (Network/User Layer): A real-time API engine integrated into telecom switches and messaging gateways that detects and intervenes in fraud attempts without user interaction.
+2.	Side B – Intelligence Hub (Enterprise Layer): A secure analytics and operations platform for banks, telecom operators, and regulators to monitor, respond to, and report fraud activity.
+2. Side A: Silent Shield (User & Network Layer)
+This layer operates passively across all mobile devices, including feature phones, ensuring universal coverage.
+2.1	Core Functional Capabilities
+1.	Real-Time Communication Interception: Incoming SMS, USSD messages, and voice calls trigger the NaijaShield API at the network level.
+o	Voice streams are transcribed in real time using models optimized for Nigerian languages (Pidgin, Yoruba, Hausa, Igbo).
+o	Code-switching is handled natively.
+2.	Intent-Based Fraud Detection: The system evaluates semantic intent rather than keyword matching.
+It detects:
+o	Social engineering patterns (e.g., impersonation such as “Hi Mum”, “Send your OTP to me”)
+o	Urgency signals
+o	OTP and credential harvesting attempts
+3.	Live Intervention Mechanism: When a high-confidence threat is detected:
+1.	For voice calls: an audio warning is injected directly into the call stream in the user’s language.
+2.	For SMS/USSD: a Flash SMS or tagged warning is delivered instantly.
+3. Side B: Intelligence Hub (Enterprise Layer)
+This layer provides operational visibility and regulatory tooling for institutional stakeholders.
+3.1	Core Functional Capabilities
+1.	Geospatial Threat Mapping: Fraud activity is aggregated at the cell tower or exchange level and visualized as a real-time heatmap. This enables rapid identification of localized fraud clusters.
+2.	Automated Regulatory Reporting: Detected incidents are automatically structured into compliance-ready reports aligned with CBN requirements. Reports include:
+o	Scam typology
+o	Language patterns
+o	Affected systems and accounts
+3.	TIRMS Integration: The system interfaces with the Telecom Identity Risk Management System (TIRMS), allowing:
+o	Cross-referencing of flagged numbers
+o	Detection of SIM swaps and recycled identities
+4.	Proactive Customer Protection: High-risk users can be automatically protected through:
+o	AI-generated outbound warnings
+o	Temporary restrictions on high-risk transactions (e.g., USSD transfers)
+4. End-to-End Workflow
+The interaction between both layers follows a deterministic pipeline:
+1.	A fraud attempt is initiated via call or SMS.
+2.	The telecom network forwards the event to the NaijaShield API.
+3.	The AI pipeline processes and scores the interaction.
+4.	If malicious, an intervention is executed immediately at the network level.
+5.	Metadata is logged and transmitted to the enterprise system.
+6.	Security teams visualize the threat and trigger regulatory or enforcement actions.
+
+Technical Architecture
+5.1 System Overview
+NaijaShield uses a cascade machine learning architecture combining:
+1.	Edge-level lightweight models for low-latency filtering
+2.	Cloud-based services for speech and reasoning
+3.	Large language models for contextual classification
+6. Core System Components
+6.1 Ingestion Layer (Network Bridges)
+1.	SMS and USSD ingestion is handled via webhook-based integrations (e.g., Africa’s Talking or Jambonz).
+2.	Voice ingestion is implemented using SIP/WebRTC streaming (e.g., Jambonz), enabling real-time audio capture.
+6.2 Backend Orchestration
+1.	The primary backend is built on ASP.NET Core (.NET 9) or Python
+2.	Microsoft Semantic Kernel orchestrates AI workflows and ensures deterministic execution.
+3.	A Python FastAPI sidecar handles audio processing and ML inference.
+6.3 AI/ML Processing Pipeline
+The pipeline is structured as a sequence of deterministic stages:
+1.	PII Redaction: Microsoft Presidio removes sensitive data (e.g., BVN, NIN) before downstream processing.
+2.	Fast Text Filtering (<50ms): AfroXLMR (ONNX) performs local classification to eliminate low-risk messages.
+3.	Speech-to-Text Conversion: Azure AI Speech transcribes real-time audio streams.
+4.	LLM-Based Classification (~500ms):GPT-4o-mini performs structured intent classification using localized fraud patterns.
+5.	Deepfake Detection (<200ms): SSL-AASIST analyzes audio streams for synthetic voice signatures.
+6.	Intervention Output: Spitch TTS generates localized warning audio injected into live calls.
+7. Data and Storage Layer
+1.	Primary Storage: Azure Cosmos DB (NoSQL) for structured event logging.
+2.	Search Layer: Azure AI Search with hybrid retrieval (BM25 + vector embeddings).
+3.	Audit Storage: Immutable logs stored in Azure Blob Storage with WORM policies.
+8. Enterprise Dashboard (Side B)
+8.1 Architecture
+1.	Built with Next.js 15 using React Server Components.
+2.	Hosted on Azure Static Web Apps with CDN distribution.
+8.2 Authentication and Access Control
+1.	Microsoft Entra External ID is used for identity management.
+2.	Role-based access is enforced across:
+o	SOC Analysts
+o	Compliance Officers
+o	System Administrators
+8.3 Real-Time Data Flow
+1.	Azure SignalR pushes live threat events to the dashboard.
+2.	SWR handles historical data retrieval.
+3.	Zustand or React Context manages client-side state.
+8.4 Visualization Layer
+1.	KPI dashboards are built with Tremor.
+2.	Advanced charts use Apache ECharts.
+3.	Geospatial mapping is powered by Azure Maps.
+9. Data Processing Flows
+9.1 SMS Classification Pipeline
+1.	SMS received → webhook triggered
+2.	Data sanitized via Presidio
+3.	Fast-filter classification applied
+4.	LLM evaluates borderline cases
+5.	Response generated and warning issued
+6.	Event logged in database
+9.2 Voice Processing Pipeline
+1.	Call initiated → audio stream forked
+2.	Parallel processing:
+o	Deepfake detection
+o	Speech transcription and intent analysis
+3.	Threat detected → intervention triggered
+4.	Audio warning injected
+5.	Event recorded and transmitted
+10. Security and Compliance
+1.	All sensitive data is redacted before external processing.
+2.	Logs are immutable and audit-compliant.
+3.	The system aligns with:
+o	CBN Cybersecurity Framework
+o	Nigeria Data Protection Act (NDPA)
+11. Deployment Strategy
+1.	Infrastructure is provisioned using Azure Bicep.
+2.	Services are containerized and deployed on Azure Container Apps.
+3.	Observability is implemented via Application Insights.
+12. Collaboration Tracks
+12.1 Frontend Development
+1.	Build dashboard structure and authentication
+2.	Implement visual components and heatmaps
+3.	Integrate real-time data streams
+12.2 Backend Development
+1.	Build API and database integration
+2.	Implement AI orchestration via Semantic Kernel
+3.	Define system-wide API contracts
+12.3 AI/ML Engineering
+1.	Implement audio ingestion and streaming
+2.	Integrate ASR and deepfake detection
+3.	Develop TTS-based intervention system
+12.4 Integration and Product
+1.	Connect telecom APIs
+2.	Simulate fraud data for demo
+3.	Develop pitch narrative and demo flow

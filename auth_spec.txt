@@ -1,0 +1,248 @@
+NaijaShield
+Authentication & Roles Specification
+Backend Integration Document  ·  Version 1.0  ·  April 2025
+Prepared by: Frontend Team  ·  For: Backend Team
+
+1. Overview
+NaijaShield is an enterprise B2B fraud intelligence platform. It is NOT a public consumer application. Access is strictly by invitation only — there is no open registration flow.
+
+The authentication system must support:
+•	Secure login for pre-invited users only
+•	Three distinct user roles with enforced permissions
+•	JWT-based session management with refresh token support
+•	An admin-controlled invitation system for onboarding new users
+
+2. User Roles
+There are exactly three roles. These exact strings must be used in the database and JWT token. No variations.
+
+Role (DB/JWT)	Display Name	Access & Permissions
+SOC_ANALYST	SOC Analyst	View Overview dashboard, View & investigate Threat Feed, Flag and annotate incidents
+COMPLIANCE_OFFICER	Compliance Officer	View Overview dashboard, View Compliance page, Generate CBN 24-hour incident report PDFs, Download reports
+SYSTEM_ADMIN	System Admin	Full access — all pages above PLUS User Management, Settings, Invite new members, Adjust system thresholds
+
+3. Route Permission Matrix
+The following table defines which roles can access which routes. The frontend middleware enforces this on every request but the backend must also enforce it on every protected API endpoint.
+
+Route	SOC_ANALYST	COMPLIANCE_OFFICER	SYSTEM_ADMIN
+/overview	✅ Allowed	✅ Allowed	✅ Allowed
+/threat-feed	✅ Allowed	❌ Denied	✅ Allowed
+/compliance	❌ Denied	✅ Allowed	✅ Allowed
+/user-management	❌ Denied	❌ Denied	✅ Allowed
+/settings	❌ Denied	❌ Denied	✅ Allowed
+
+4. Required API Endpoints
+The backend must implement the following five endpoints. All protected endpoints require a valid Bearer token in the Authorization header.
+
+4.1  POST /api/auth/login
+Authenticates a user with email and password. Returns a JWT access token and a refresh token.
+Authorization: None required (public endpoint)
+
+REQUEST BODY:
+{
+  "email": "analyst@mtn.ng",
+  "password": "password123"
+}
+
+RESPONSE — 200 OK:
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "refreshToken": "dGhpcyBpcyBh...",
+  "user": {
+    "id": "USR-001",
+    "name": "Emeka Okafor",
+    "email": "analyst@mtn.ng",
+    "role": "SOC_ANALYST",
+    "organisation": "MTN Nigeria"
+  }
+}
+
+RESPONSE — 401 Unauthorized:
+{
+  "error": "INVALID_CREDENTIALS",
+  "message": "Email or password is incorrect"
+}
+
+
+4.2  POST /api/auth/invite/accept  (The Signup Endpoint)
+This is the only signup endpoint. It is not open registration. It only works when a valid, unexpired invite token exists. The invitee's email and role are already set — they only set their password here.
+Authorization: None required — the invite token itself is the authorization
+
+REQUEST BODY:
+{
+  "inviteToken": "abc123xyz789",
+  "password": "NewPassword@1234",
+  "confirmPassword": "NewPassword@1234"
+}
+
+RESPONSE — 200 OK:
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "refreshToken": "dGhpcyBpcyBh...",
+  "user": {
+    "id": "USR-006",
+    "name": "Segun Lawal",
+    "email": "s.lawal@mtn.ng",
+    "role": "COMPLIANCE_OFFICER",
+    "organisation": "MTN Nigeria"
+  }
+}
+
+RESPONSE — 400 Bad Request:
+{
+  "error": "INVALID_INVITE",
+  "message": "This invite link is invalid or has expired"
+}
+
+RESPONSE — 400 Bad Request:
+{
+  "error": "PASSWORDS_DO_NOT_MATCH",
+  "message": "Passwords do not match"
+}
+
+
+4.3  POST /api/auth/invite  (Admin Creates Invitation)
+Allows a SYSTEM_ADMIN to invite a new user. The backend creates a pending user record and sends an invitation email to the provided address. The invite token expires after 48 hours.
+Authorization: Bearer token required — SYSTEM_ADMIN role only. Return 403 for any other role.
+
+REQUEST BODY:
+{
+  "email": "newperson@mtn.ng",
+  "name": "New Person",
+  "role": "SOC_ANALYST"
+}
+
+RESPONSE — 201 Created:
+{
+  "inviteId": "INV-007",
+  "email": "newperson@mtn.ng",
+  "name": "New Person",
+  "role": "SOC_ANALYST",
+  "expiresAt": "2025-04-29T09:00:00Z",
+  "status": "Pending"
+}
+
+RESPONSE — 403 Forbidden:
+{
+  "error": "INSUFFICIENT_PERMISSIONS",
+  "message": "Only System Admins can invite new users"
+}
+
+RESPONSE — 409 Conflict:
+{
+  "error": "USER_ALREADY_EXISTS",
+  "message": "A user with this email already exists"
+}
+
+
+4.4  POST /api/auth/refresh
+Exchanges a valid refresh token for a new access token and refresh token pair. The frontend calls this silently when the access token expires, without requiring the user to log in again.
+Authorization: None required — refresh token is the credential
+
+REQUEST BODY:
+{
+  "refreshToken": "dGhpcyBpcyBh..."
+}
+
+RESPONSE — 200 OK:
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "refreshToken": "dGhpcyBpcyBh..."
+}
+
+RESPONSE — 401 Unauthorized:
+{
+  "error": "INVALID_REFRESH_TOKEN",
+  "message": "Refresh token is invalid or has expired. Please log in again."
+}
+
+
+4.5  POST /api/auth/logout
+Invalidates the user's refresh token server-side. The frontend clears the access token from memory. This ensures that even if someone intercepts the refresh token, it cannot be used after logout.
+Authorization: Bearer token required
+
+REQUEST BODY:
+{} (empty)
+
+RESPONSE — 200 OK:
+{
+  "message": "Logged out successfully"
+}
+
+
+5. JWT Token Structure
+Every JWT access token issued by the backend must contain the following claims. The frontend reads these claims to determine role-based access.
+
+JWT PAYLOAD (decoded):
+{
+  "sub": "USR-001",            // User ID
+  "email": "analyst@mtn.ng",  // User email
+  "name": "Emeka Okafor",     // Full name
+  "role": "SOC_ANALYST",      // Must be one of the three exact role strings
+  "organisation": "MTN Nigeria",
+  "iat": 1745740800,           // Issued at (Unix timestamp)
+  "exp": 1745744400            // Expires at — 1 HOUR after iat
+}
+
+
+Token expiry rules:
+•	Access token: expires 1 hour after issue
+•	Refresh token: expires 7 days after issue
+•	Invite token: expires 48 hours after creation
+
+6. Users Table — Required Fields
+The users table in the database must include at minimum the following fields:
+
+Field	Type	Notes
+id	string	Format: USR-001, USR-002 etc
+name	string	Full name of user
+email	string (unique)	Must be unique across the system
+password	string (hashed)	Bcrypt hashed — NEVER store plain text
+role	enum	SOC_ANALYST | COMPLIANCE_OFFICER | SYSTEM_ADMIN
+organisation	string	e.g. MTN Nigeria, Airtel Nigeria
+status	enum	Active | Inactive | Pending
+inviteToken	string (nullable)	Cleared after invite is accepted
+inviteExpiry	datetime (nullable)	Null after invite is accepted
+lastActive	datetime	Updated on every successful login
+createdAt	datetime	Set on user creation
+
+7. Standard Error Response Format
+All error responses across every endpoint must follow this exact format for consistency with the frontend error handling:
+
+ERROR RESPONSE STRUCTURE:
+{
+  "error": "ERROR_CODE_IN_CAPS",
+  "message": "Human readable message for display"
+}
+
+
+HTTP Code	Error Code	When to Use
+400	INVALID_INVITE	Invite token is missing, invalid, or expired
+400	PASSWORDS_DO_NOT_MATCH	Password and confirmPassword fields differ
+401	INVALID_CREDENTIALS	Wrong email or password on login
+401	TOKEN_EXPIRED	Access token has expired
+401	INVALID_REFRESH_TOKEN	Refresh token is invalid or expired
+403	INSUFFICIENT_PERMISSIONS	User's role does not allow this action
+409	USER_ALREADY_EXISTS	Email already registered in the system
+429	RATE_LIMIT_EXCEEDED	Too many login attempts — lock for 15 minutes
+
+8. Security Requirements
+The following security requirements are non-negotiable for this platform given its compliance context:
+
+•	Password Hashing: Passwords must be hashed using bcrypt with a minimum cost factor of 12
+•	Token Validation: All protected endpoints must validate the Bearer token on every request, not just on login
+•	Rate Limiting: After 5 failed login attempts from the same IP, lock that account for 15 minutes and return 429
+•	Refresh Token Storage: Refresh tokens must be stored server-side and invalidated on logout — they cannot be decoded-only
+•	PII Protection: No PII (BVN, NIN, account numbers) should ever appear in logs or error messages
+•	HTTPS: All endpoints must be served over HTTPS only
+
+End of Document
+
+
+
+
+curl -X POST http://localhost:5209/api/auth/invite -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJVU1ItMDAxIiwiZW1haWwiOiJhZG1pbkBuYWlqYXNoaWVsZC5uZyIsIm5hbWUiOiJTeXN0ZW0gQWRtaW5pc3RyYXRvciIsInJvbGUiOiJTWVNURU1fQURNSU4iLCJvcmdhbmlzYXRpb24iOiJOYWlqYVNoaWVsZCIsImlhdCI6MTc3NzM4NTc1NiwiZXhwIjoxNzc3Mzg5MzU2LCJpc3MiOiJOYWlqYVNoaWVsZCIsImF1ZCI6Ik5haWphU2hpZWxkQ2xpZW50In0.fR_DysO6sQUHsuAek9XKg8RMJNAH4a9EMh3IfHMTSxQ","refreshToken":"J1RnhGZ+f3e6gqw30Z1VzIrWsMJP5HQI5ven/jec+9p9MFN2AuLSns4DGiT+BIRo+6tM/+ueKUY+TAcDDS34Mw==" -d " {\"email\":\"analyst@mtn.ng\",\"name\":\"Emeka Okafor\",\"role\":\"SOC_ANALYST\"}"
+
+
+Invoke-RestMethod -Uri "http://localhost:5209/api/auth/invite/accept" -Method POST -ContentType "application/json" -Body '{"inviteToken":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJVU1ItMDAxIiwiZW1haWwiOiJhZG1pbkBuYWlqYXNoaWVsZC5uZyIsIm5hbWUiOiJTeXN0ZW0gQWRtaW5pc3RyYXRvciIsInJvbGUiOiJTWVNURU1fQURNSU4iLCJvcmdhbmlzYXRpb24iOiJOYWlqYVNoaWVsZCIsImlhdCI6MTc3NzM4NTI0OSwiZXhwIjoxNzc3Mzg4ODQ5LCJpc3MiOiJOYWlqYVNoaWVsZCIsImF1ZCI6Ik5haWphU2hpZWxkQ2xpZW50In0.LUp08M4TU7H6Sy6jpa8pQtbrH9E_jznYnPmuBX6JwBo","password":"NewPassword@1234","confirmPassword":"NewPassword@1234"}'
+
+curl -X POST http://localhost:5209/api/auth/invite/accept -H "Content-Type: application/json" -d "{\"inviteToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJVU1ItMDAxIiwiZW1haWwiOiJhZG1pbkBuYWlqYXNoaWVsZC5uZyIsIm5hbWUiOiJTeXN0ZW0gQWRtaW5pc3RyYXRvciIsInJvbGUiOiJTWVNURU1fQURNSU4iLCJvcmdhbmlzYXRpb24iOiJOYWlqYVNoaWVsZCIsImlhdCI6MTc3NzM4NTI0OSwiZXhwIjoxNzc3Mzg4ODQ5LCJpc3MiOiJOYWlqYVNoaWVsZCIsImF1ZCI6Ik5haWphU2hpZWxkQ2xpZW50In0.LUp08M4TU7H6Sy6jpa8pQtbrH9E_jznYnPmuBX6JwBo\",\"password\":\"NewPassword@1234\",\"confirmPassword\":\"NewPassword@1234\"}"

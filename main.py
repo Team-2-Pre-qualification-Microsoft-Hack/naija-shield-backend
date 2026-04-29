@@ -123,7 +123,9 @@ def compute_deepfake_score(audio_bytes: bytes) -> float:
 @app.get("/api/health-voice")
 def health_check():
     """
-    Proves the Sidecar has its keys and is ready to process audio.
+    Transcribes audio bytes using the Azure Speech Service REST API.
+    Supports Nigerian English (en-NG) and falls back to en-US.
+    Returns an empty string if transcription fails rather than raising.
     """
     spitch_headers = {
         "Authorization": f"Bearer {spitch_key}",
