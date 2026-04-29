@@ -54,4 +54,20 @@ public class ThreatIncident
     /// <summary>Voice-only: deepfake probability score 0.0–1.0 returned by the AI sidecar.</summary>
     [JsonProperty("deepfakeScore", NullValueHandling = NullValueHandling.Ignore)]
     public double? DeepfakeScore { get; set; }
+
+    /// <summary>Approximate latitude of the sender derived from phone prefix lookup.</summary>
+    [JsonProperty("lat", NullValueHandling = NullValueHandling.Ignore)]
+    public double? Lat { get; set; }
+
+    /// <summary>Approximate longitude of the sender derived from phone prefix lookup.</summary>
+    [JsonProperty("lng", NullValueHandling = NullValueHandling.Ignore)]
+    public double? Lng { get; set; }
+
+    /// <summary>Nigerian state the sender number is mapped to.</summary>
+    [JsonProperty("state", NullValueHandling = NullValueHandling.Ignore)]
+    public string? State { get; set; }
+
+    /// <summary>Local Government Area within the state.</summary>
+    [JsonProperty("lga", NullValueHandling = NullValueHandling.Ignore)]
+    public string? Lga { get; set; }
 }

@@ -135,6 +135,9 @@ builder.Services.AddScoped<IThreatScoringService, ThreatScoringService>();
 builder.Services.AddScoped<IIncidentRepository,   CosmosIncidentRepository>();
 builder.Services.AddScoped<IAlertService,         LoggingAlertService>();
 
+// Location lookup
+builder.Services.AddSingleton<PhoneLocationService>();
+
 // Auth pipeline
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<RateLimitService>();
