@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/USER/Downloads/**)",
+      "Bash(curl -s -o response.json -w 'Status: %{http_code}\\\\n' -X POST 'https://swedencentral.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=en-NG&format=detailed' -H 'Ocp-Apim-Subscription-Key: CoXuLv1qyxvkwow4T1eTQeedJ7DUI4fPRKHTx3vSXiwgLUmpWV7tJQQJ99CDACfhMk5XJ3w3AAAYACOG3MbT' -H 'Content-Type: audio/mpeg' --data-binary @C:/Users/USER/Downloads/AUD-20260428-WA0064.mp3)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python -c ' *)",
+      "Bash(ffmpeg -version)",
+      "Bash(python -c \"import pydub; print\\('pydub available'\\)\")",
+      "Bash(python -c \"import soundfile; print\\('soundfile available'\\)\")",
+      "Bash(python -c \"import librosa; print\\('librosa available'\\)\")"
+    ]
+  }
+}

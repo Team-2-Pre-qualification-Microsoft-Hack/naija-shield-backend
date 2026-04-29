@@ -80,6 +80,7 @@ Console.WriteLine("Initializing Cosmos DB database and containers...");
 var database = await cosmosClient.CreateDatabaseIfNotExistsAsync("NaijaShieldDB");
 await database.Database.CreateContainerIfNotExistsAsync("Users", "/id");
 await database.Database.CreateContainerIfNotExistsAsync("RefreshTokens", "/userId");
+await database.Database.CreateContainerIfNotExistsAsync("SmsEvents", "/id");
 Console.WriteLine("Cosmos DB containers ready.");
 
 // ==========================================
@@ -173,6 +174,8 @@ builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<RateLimitService>();
 builder.Services.AddSingleton<EmailService>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddHttpClient<AfricasTalkingService>();
+builder.Services.AddScoped<SmsService>();
 
 // ==========================================
 // 6. CORS
@@ -208,6 +211,7 @@ app.UseAuthorization();
 // 7. MAP ENDPOINTS
 // ==========================================
 app.MapAuthEndpoints();
+app.MapSmsEndpoints();
 
 // Keep the original test endpoint
 app.MapGet("/api/test-scam", async (Kernel kernel) =>
