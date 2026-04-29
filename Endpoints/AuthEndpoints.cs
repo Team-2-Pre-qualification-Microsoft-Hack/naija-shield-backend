@@ -103,6 +103,35 @@ public static class AuthEndpoints
         .Produces<ErrorResponse>(403);
 
         // ===================================================
+        // DELETE /api/auth/users/{id} — SYSTEM_ADMIN only
+        // ===================================================
+        auth.MapDelete("/users/{id}", async (string id, AuthService authService, HttpContext context) =>
+        {
+            var roleClaim = context.User.FindFirst("role")?.Value
+                          ?? context.User.FindFirst(ClaimTypes.Role)?.Value;
+            if (roleClaim != "SYSTEM_ADMIN")
+            {
+                return Results.Json(new ErrorResponse
+                {
+                    Error = "INSUFFICIENT_PERMISSIONS",
+                    Message = "Only System Admins can remove users"
+                }, statusCode: 403);
+            }
+
+            var adminId = context.User.FindFirst("sub")?.Value
+                        ?? context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                        ?? string.Empty;
+
+            return await authService.DeleteUserAsync(id, adminId);
+        })
+        .RequireAuthorization()
+        .WithName("DeleteUser")
+        .Produces(200)
+        .Produces<ErrorResponse>(400)
+        .Produces<ErrorResponse>(403)
+        .Produces<ErrorResponse>(404);
+
+        // ===================================================
         // POST /api/auth/logout — Authenticated
         // ===================================================
         auth.MapPost("/logout", async (AuthService authService, HttpContext context) =>

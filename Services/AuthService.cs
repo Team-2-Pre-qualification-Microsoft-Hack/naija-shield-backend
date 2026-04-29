@@ -301,6 +301,61 @@ public class AuthService
     }
 
     // =============================================
+    // DELETE / REVOKE USER (Admin only)
+    // =============================================
+    public async Task<IResult> DeleteUserAsync(string targetUserId, string requestingAdminId)
+    {
+        if (targetUserId == requestingAdminId)
+        {
+            return Results.Json(new ErrorResponse
+            {
+                Error = "CANNOT_DELETE_SELF",
+                Message = "You cannot delete your own account"
+            }, statusCode: 400);
+        }
+
+        User target;
+        try
+        {
+            var response = await _usersContainer.ReadItemAsync<User>(
+                targetUserId, new PartitionKey(targetUserId));
+            target = response.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return Results.Json(new ErrorResponse
+            {
+                Error = "USER_NOT_FOUND",
+                Message = "User not found"
+            }, statusCode: 404);
+        }
+
+        // Delete user document
+        await _usersContainer.DeleteItemAsync<User>(targetUserId, new PartitionKey(targetUserId));
+
+        // Revoke all refresh tokens for this user
+        var tokenQuery = _refreshTokensContainer.GetItemLinqQueryable<Models.RefreshToken>()
+            .Where(t => t.UserId == targetUserId)
+            .ToFeedIterator();
+
+        while (tokenQuery.HasMoreResults)
+        {
+            var batch = await tokenQuery.ReadNextAsync();
+            foreach (var t in batch)
+            {
+                await _refreshTokensContainer.DeleteItemAsync<Models.RefreshToken>(
+                    t.Id, new PartitionKey(t.UserId));
+            }
+        }
+
+        _logger.LogInformation(
+            "User {TargetId} ({Email}) deleted by admin {AdminId}",
+            targetUserId, target.Email, requestingAdminId);
+
+        return Results.Ok(new { message = $"User {target.Email} has been removed", userId = targetUserId });
+    }
+
+    // =============================================
     // LIST USERS (Admin only)
     // =============================================
     public async Task<IResult> GetUsersAsync()
