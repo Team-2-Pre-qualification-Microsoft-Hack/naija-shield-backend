@@ -134,6 +134,18 @@ builder.Services.AddHttpClient("AiSidecar", client =>
 });
 builder.Services.AddHttpClient<AfricasTalkingService>();
 
+// Jambonz REST API client (used by JambonzService for Live Call Control)
+var jambonzApiUrl = builder.Configuration["Jambonz:ApiBaseUrl"] ?? "https://localhost:3000";
+var jambonzToken  = builder.Configuration["Jambonz:ApiToken"] ?? string.Empty;
+builder.Services.AddHttpClient("Jambonz", client =>
+{
+    client.BaseAddress = new Uri(jambonzApiUrl);
+    client.Timeout     = TimeSpan.FromSeconds(10);
+    if (!string.IsNullOrEmpty(jambonzToken))
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", jambonzToken);
+});
+
 // ==========================================
 // 8. DOMAIN SERVICES (DI)
 // ==========================================
@@ -145,6 +157,9 @@ builder.Services.AddScoped<IAlertService,         LoggingAlertService>();
 
 // Location lookup
 builder.Services.AddSingleton<PhoneLocationService>();
+
+// Jambonz call-routing + LCC
+builder.Services.AddSingleton<JambonzService>();
 
 // Auth pipeline
 builder.Services.AddSingleton<TokenService>();
@@ -212,11 +227,13 @@ app.UseSwaggerUI(c =>
 });
 
 app.UseCors("FrontendPolicy");
+app.UseWebSockets();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<ThreatHub>("/hubs/threat");
 app.MapAuthEndpoints();
+app.MapJambonzEndpoints();
 
 // Smoke-test endpoint (retained from initial setup)
 app.MapGet("/api/test-scam", async (Kernel kernel) =>
