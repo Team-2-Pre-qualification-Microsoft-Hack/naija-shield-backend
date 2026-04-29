@@ -134,11 +134,13 @@ public sealed class IngestController : ControllerBase
             // ── Step 6: Broadcast to dashboard via SignalR ─────────────────
             await BroadcastToFeed(incident, cancellationToken);
 
-            // ── Step 7: Alert the recipient if action is BLOCK or MONITOR ──
+            // ── Step 7: Warn the sender if their message looks like a scam ──
+            // payload.From = the phone that sent the message to the shortcode.
+            // payload.To   = the shortcode (40045) — never the warning destination.
             if (status is "Blocked" or "Monitoring")
             {
                 await _alerts.SendSmsAlertAsync(
-                    payload.To,
+                    payload.From,
                     redactedText,
                     status.ToUpperInvariant(),
                     cancellationToken);
