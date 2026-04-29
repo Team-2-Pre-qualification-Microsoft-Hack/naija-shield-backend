@@ -243,63 +243,6 @@ app.MapGet("/api/test-scam", async (Kernel kernel) =>
 });
 
 // ==========================================
-// 7. DEVELOPMENT-ONLY: CREATE INITIAL ADMIN
-// ==========================================
-if (!app.Environment.IsProduction())
-{
-    app.MapPost("/api/dev/create-admin", async (IUserService userService, CosmosClient cosmosClient, IConfiguration configuration) =>
-    {
-        try
-        {
-            var databaseName = configuration["Cosmos:DatabaseName"] ?? "NaijaShieldDB";
-            var containerName = configuration["Cosmos:UserContainerName"] ?? "Users";
-            var container = cosmosClient.GetContainer(databaseName, containerName);
-
-            // Try to delete existing admin if it exists
-            try
-            {
-                await container.DeleteItemAsync<naija_shield_backend.Models.User>("USR-001", new PartitionKey("USR-001"));
-                Console.WriteLine("Deleted existing admin user");
-            }
-            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-                // User doesn't exist - that's fine
-            }
-
-            // Create fresh admin user with correct password hash
-            var adminUser = new naija_shield_backend.Models.User
-            {
-                Id = "USR-001",
-                Name = "Admin User",
-                Email = "admin@naijashield.com",
-                Password = BCrypt.Net.BCrypt.HashPassword("admin123", 12),
-                Role = naija_shield_backend.Models.UserRole.SYSTEM_ADMIN,
-                Organisation = "NaijaShield",
-                Status = naija_shield_backend.Models.UserStatus.Active,
-                LastActive = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow,
-                FailedLoginAttempts = 0
-            };
-
-            await userService.CreateUserAsync(adminUser);
-
-            return Results.Ok(new
-            {
-                message = "Admin user created successfully!",
-                email = "admin@naijashield.com",
-                password = "admin123",
-                role = "SYSTEM_ADMIN",
-                note = "Password is freshly hashed with BCrypt"
-            });
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem($"Error: {ex.Message}");
-        }
-    });
-}
-
-// ==========================================
 // 12. SEED DEFAULT ADMIN
 // ==========================================
 using (var scope = app.Services.CreateScope())
