@@ -62,8 +62,8 @@ NaijaShield intercepts phone calls and SMS messages at the network level, classi
            │                  │                  │
            └──────────────────┴──────────────────┘
                               │
-                    ┌─────────▼──────────┐
-                    │   .NET Core API    │   App Service · eastus
+                    ┌─────────▼─────────┐
+                    │   .NET Core API   │   App Service · swedencentral
                     │                   │
                     │  PII Redaction    │
                     │  AI Sidecar call  │◄──── Python Sidecar (port 8000)
