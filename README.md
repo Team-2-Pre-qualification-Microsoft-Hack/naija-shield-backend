@@ -21,7 +21,19 @@ NaijaShield is a real-time fraud and scam detection platform designed to protect
 - **Cosmos DB Persistence** — Stores call metadata, scam verdicts, analytics, and user data in Azure Cosmos DB.
 - **CORS-Enabled** — Pre-configured for a Next.js frontend on `localhost:3000`.
 
----
+--- 
+
+## API Testing
+
+Import the Postman collection:
+
+'docs/NaijaShield.postman_collection.json'
+
+Open it in Postman and set:
+
+baseurl = https://api-naijashield-dev-a5ggd0exe2dmccf2.eastus-01.azurewebsites.net
+
+
 
 ## 🏗️ Architecture
 
