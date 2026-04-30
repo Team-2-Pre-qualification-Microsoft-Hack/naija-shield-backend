@@ -17,7 +17,7 @@ environment = os.environ.get("ASPNETCORE_ENVIRONMENT", "Development")
 
 if environment != "Production":
     # Read directly from appsettings.Development.json (same file the .NET app uses)
-    settings_path = os.path.join(os.path.dirname(__file__), "appsettings.Development.json")
+    settings_path = os.path.join(os.path.dirname(__file__), "..", "appsettings.Development.json")
     with open(settings_path) as f:
         settings = json.load(f)
     spitch_key = settings.get("Spitch-API-Key", "")

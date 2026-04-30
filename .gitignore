@@ -12,6 +12,9 @@ appsettings.*.json
 !appsettings.json
 *.local.json
 
+# Claude Code local settings (contain machine-specific paths and permissions)
+.claude/
+
 # User-specific files
 *.rsuser
 *.suo
@@ -80,7 +83,6 @@ ScaffoldingReadMe.txt
 # StyleCop
 StyleCopReport.xml
 
-appsettings.Development.json
 # Files built by Visual Studio
 *_i.c
 *_p.c
